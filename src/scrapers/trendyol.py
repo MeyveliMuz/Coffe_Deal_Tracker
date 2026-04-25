@@ -57,6 +57,8 @@ class TrendyolScraper(BaseScraper):
                     continue
                 if not self._brand_matches(listing.name, brand):
                     continue
+                if not self._is_whole_bean(listing.name):
+                    continue
                 results.append(listing)
 
             return results
@@ -108,17 +110,39 @@ class TrendyolScraper(BaseScraper):
                 return None
 
             # Fiyat — .single-price indirimsiz tek fiyat; indirimli varyantlarda
-            # genellikle son (alt) fiyat hedef fiyattır.
-            price_el = (
-                await card.query_selector(".single-price")
-                or await card.query_selector(".price-section .discounted")
-                or await card.query_selector(".price-section")
-            )
-            price_txt = (await price_el.inner_text()).strip() if price_el else ""
-            # Birden fazla fiyat görünüyorsa (ör. eski + yeni) en küçüğünü al
-            price = self._pick_lowest_price(price_txt)
+            # .discounted-price aktif fiyat, .strikethrough-price üstü çizili
+            # eski fiyat. Önce her ikisini ayrı ayrı yakalamayı dene; olmazsa
+            # eski fallback'e (price-section bütünü) düş.
+            discounted_el = await card.query_selector(".discounted-price, .sale-price")
+            strikethrough_el = await card.query_selector(".strikethrough-price")
+            single_el = await card.query_selector(".single-price")
+
+            price: float | None = None
+            original_price: float | None = None
+
+            if discounted_el is not None:
+                price = self._pick_lowest_price(
+                    (await discounted_el.inner_text()).strip()
+                )
+                if strikethrough_el is not None:
+                    original_price = self._pick_lowest_price(
+                        (await strikethrough_el.inner_text()).strip()
+                    )
+            elif single_el is not None:
+                price = self._pick_lowest_price(
+                    (await single_el.inner_text()).strip()
+                )
+            else:
+                section_el = await card.query_selector(".price-section")
+                price_txt = (await section_el.inner_text()).strip() if section_el else ""
+                price = self._pick_lowest_price(price_txt)
+
             if price is None or price <= 0:
                 return None
+            # Mantık kontrolü: eski fiyat yeni fiyattan düşükse veya eşitse
+            # gerçek bir indirim yok demektir, temizle.
+            if original_price is not None and original_price <= price:
+                original_price = None
 
             # Resim
             img_el = await card.query_selector("img[data-testid='image-img'], img")
@@ -136,6 +160,7 @@ class TrendyolScraper(BaseScraper):
                 site=self.site_name,
                 brand=brand.lower(),
                 image_url=image_url,
+                original_price=original_price,
             )
         except Exception as exc:
             log.debug("Trendyol kart parse hatası: %s", exc)
@@ -143,17 +168,33 @@ class TrendyolScraper(BaseScraper):
 
     @staticmethod
     def _pick_lowest_price(text: str) -> float | None:
-        """Birden fazla fiyat varsa en düşüğünü döndür."""
+        """Fiyat metninden gerçek satış fiyatını çıkar.
+
+        Trendyol ürün kartı bazen birden fazla fiyat gösterir:
+          - üstü çizili eski fiyat + indirimli yeni fiyat
+          - kapsül/paket ürünlerinde "329 TL  (32,90 TL / Adet)" gibi birim fiyat
+
+        Önce "/ Adet", "/ kg" gibi birim fiyatlarını eleriz, sonra kalanların
+        en düşüğünü döndürürüz (indirimli fiyat genelde düşük olandır).
+        """
         import re
 
+        # "/ Adet", "/ kg", "/ ml" vb. ile biten ifadeleri kaldır
+        cleaned_text = re.sub(
+            r"[\d.,]+\s*TL\s*/\s*\w+",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+
         candidates: list[float] = []
-        for match in re.findall(r"[\d.,]+\s*TL", text):
+        for match in re.findall(r"[\d.,]+\s*TL", cleaned_text):
             val = BaseScraper._parse_price_tr(match)
             if val is not None and val > 0:
                 candidates.append(val)
         if candidates:
             return min(candidates)
-        return BaseScraper._parse_price_tr(text)
+        return BaseScraper._parse_price_tr(cleaned_text)
 
 
 # Manuel test entry point: python -m src.scrapers.trendyol meinl

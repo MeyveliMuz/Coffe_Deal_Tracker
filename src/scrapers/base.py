@@ -88,3 +88,29 @@ class BaseScraper(ABC):
 
         pattern = r"\b" + re.escape(brand.strip()) + r"\b"
         return bool(re.search(pattern, product_name, re.IGNORECASE))
+
+    # Sadece çekirdek kahve istiyoruz; öğütülmüş/kapsül/granül/filtre/instant
+    # ürünleri ürün adına bakıp eliyoruz. Arama suffix'i "kahve çekirdeği"
+    # olsa bile sonuçlara karışıyorlar.
+    _NON_BEAN_KEYWORDS = (
+        "öğütülmüş", "ogutulmus",
+        "kapsül", "kapsul",
+        "granül", "granul",
+        "filtre kahve", "filtre  kahve",
+        "instant", "hazır kahve", "hazir kahve",
+        "pod", "tablet",
+        "nespresso uyumlu", "dolce gusto",
+        "türk kahvesi", "turk kahvesi",
+    )
+
+    @classmethod
+    def _is_whole_bean(cls, product_name: str) -> bool:
+        name = product_name.lower()
+        # Pozitif kontrol: ad "kahve" veya "coffee" içermeli — kahve markaları
+        # giyim/aksesuar gibi alakasız ürünler de satıyor (ör. "Tchibo
+        # Dokuma Pijama Takımı"), bunları en başta eleyelim.
+        if "kahve" not in name and "coffee" not in name:
+            return False
+        if any(kw in name for kw in cls._NON_BEAN_KEYWORDS):
+            return False
+        return True

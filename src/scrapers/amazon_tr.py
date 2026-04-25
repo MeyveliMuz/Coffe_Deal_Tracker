@@ -66,6 +66,8 @@ class AmazonTrScraper(BaseScraper):
                     continue
                 if not self._brand_matches(listing.name, brand):
                     continue
+                if not self._is_whole_bean(listing.name):
+                    continue
                 results.append(listing)
             return results
         finally:
@@ -88,12 +90,47 @@ class AmazonTrScraper(BaseScraper):
             if not title:
                 return None
 
-            # Fiyat — ".a-offscreen" tam fiyatı içerir (ör. "725,00 TL")
-            price_el = await card.query_selector(".a-price .a-offscreen")
+            # Fiyat — ".a-offscreen" tam fiyatı içerir (ör. "725,00 TL").
+            # İlk .a-price güncel fiyat, .a-text-price (strikethrough) eski/liste
+            # fiyatıdır.
+            price_el = await card.query_selector(".a-price:not(.a-text-price) .a-offscreen")
+            if price_el is None:
+                price_el = await card.query_selector(".a-price .a-offscreen")
             price_txt = (await price_el.inner_text()).strip() if price_el else ""
             price = self._parse_price_tr(price_txt)
             if price is None or price <= 0:
                 return None
+
+            # Üstü çizili / liste fiyatı (varsa).
+            # DİKKAT: Amazon kartında birim fiyat ("1.748,00 TL / kg") ve
+            # strikethrough fiyat aynı `.a-price.a-text-price` class'ını
+            # kullanıyor. Birim fiyatın etrafında "/ kg", "/ g" gibi metin
+            # bulunur — parent'ın text'ine bakarak ayırt et.
+            # Strikethrough için Amazon ayrıca `data-a-strike="true"` koyar;
+            # önce onu deneyelim.
+            original_price: float | None = None
+            strike_el = await card.query_selector(
+                "span[data-a-strike='true'] .a-offscreen"
+            )
+            if strike_el is None:
+                # Fallback: .a-text-price ama parent'ında "/" geçmeyen
+                candidates = await card.query_selector_all(".a-price.a-text-price")
+                for cand in candidates:
+                    parent_text = await cand.evaluate(
+                        "el => el.parentElement ? el.parentElement.innerText : ''"
+                    )
+                    if "/" in (parent_text or ""):
+                        # birim fiyat — ör. "(1.748,00 TL / kg)"
+                        continue
+                    inner = await cand.query_selector(".a-offscreen")
+                    if inner is not None:
+                        strike_el = inner
+                        break
+            if strike_el is not None:
+                old_txt = (await strike_el.inner_text()).strip()
+                old_val = self._parse_price_tr(old_txt)
+                if old_val is not None and old_val > price:
+                    original_price = old_val
 
             # Resim
             img_el = await card.query_selector("img.s-image")
@@ -109,6 +146,7 @@ class AmazonTrScraper(BaseScraper):
                 site=self.site_name,
                 brand=brand.lower(),
                 image_url=image_url,
+                original_price=original_price,
             )
         except Exception as exc:
             log.debug("Amazon kart parse hatası: %s", exc)

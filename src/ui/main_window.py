@@ -88,11 +88,11 @@ class MainWindow(QMainWindow):
 
         # İlk kullanıcı açıklama bandı
         self.banner = QLabel(
-            "ℹ Fırsatlar sekmesi, bir ürünün fiyatı son "
-            f"{self._config.history_days} günün en düşüğünün ALTINA indiğinde dolar "
-            "(aynı fiyat kalırsa fırsat sayılmaz). "
-            "Uygulama ilk çalıştırıldığında geçmiş boş olduğu için önce 'Tüm Ürünler' "
-            "sekmesi dolacak; fırsat tespiti için birkaç gün geçmiş gerekir."
+            "ℹ Fırsatlar sekmesi iki durumda dolar: "
+            f"(1) ürünün fiyatı son {self._config.history_days} günün en düşüğünün "
+            "ALTINA indiyse; (2) sitenin kendi listelemesinde üstü çizili eski fiyat "
+            "varsa (geçmiş henüz yokken bile). "
+            "Bir ürünün fiyat geçmişi grafiğini görmek için satırdaki 'Grafik' butonuna basın."
         )
         self.banner.setWordWrap(True)
         self.banner.setStyleSheet(
@@ -103,8 +103,8 @@ class MainWindow(QMainWindow):
 
         # Sekmeler
         self.tabs = QTabWidget()
-        self.deal_table = DealTable("deals")
-        self.all_table = DealTable("all")
+        self.deal_table = DealTable("deals", db_path=self._db_path)
+        self.all_table = DealTable("all", db_path=self._db_path)
         self.tabs.addTab(self.deal_table, "Fırsatlar (0)")
         self.tabs.addTab(self.all_table, "Tüm Ürünler (0)")
         root.addWidget(self.tabs, 1)

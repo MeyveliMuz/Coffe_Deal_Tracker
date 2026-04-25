@@ -13,6 +13,10 @@ class ProductListing:
     brand: str
     image_url: Optional[str] = None
     currency: str = "TRY"
+    # Sitede üstü çizili eski fiyat (strikethrough/list price). Kart üzerinde
+    # indirim etiketi varsa scraper bunu doldurur — uygulama geçmişi olmasa
+    # bile bunu fırsat olarak işaretleyebilir.
+    original_price: Optional[float] = None
 
 
 @dataclass(frozen=True)

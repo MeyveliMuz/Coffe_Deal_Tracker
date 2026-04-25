@@ -232,6 +232,31 @@ class PriceDatabase:
             row = cur.fetchone()
             return int(row[0]) if row else 0
 
+    def price_history(
+        self, product_url: str, window_days: int = 90
+    ) -> list[tuple[datetime, float]]:
+        """Verilen ürün için (zaman, fiyat) geçmişini eskiden yeniye döndür."""
+        with self._cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT recorded_at, price FROM price_history
+                WHERE product_url = ?
+                  AND recorded_at >= datetime('now', '-{int(window_days)} days')
+                ORDER BY recorded_at ASC
+                """,
+                (product_url,),
+            )
+            rows = cur.fetchall()
+        out: list[tuple[datetime, float]] = []
+        for ts, price in rows:
+            if isinstance(ts, str):
+                try:
+                    ts = datetime.fromisoformat(ts)
+                except ValueError:
+                    continue
+            out.append((ts, float(price)))
+        return out
+
     def all_products(self) -> list[tuple]:
         with self._cursor() as cur:
             cur.execute("SELECT url, name, brand, site, image_url FROM products ORDER BY name")

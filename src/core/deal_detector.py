@@ -15,16 +15,19 @@ def detect_deal(
     window_days: int = 30,
     recorded_at: Optional[datetime] = None,
 ) -> Optional[Deal]:
-    """Mevcut fiyat son `window_days` içindeki ÖNCEKİ en düşüğün ALTINA
-    indiyse `Deal` döndür. Fiyat önceki min ile aynı (%0 değişim) ise
-    fırsat sayılmaz — kullanıcı için gürültü olur.
+    """Bir ürün için fırsat tespiti.
 
-    Önemli: `recorded_at` verilirse bu tarih/saatten **önceki** kayıtlar
-    kullanılır. Scanner `record_listing` sonrası döndürdüğü timestamp'i
-    burada geçerek "mevcut kaydı kendisiyle karşılaştırma" sorununun
-    önüne geçer (indirim % her taramada azalmaz).
+    İki yoldan biriyle fırsat işaretlenir:
 
-    Yeterli geçmiş (en az 1 ÖNCEKİ kayıt) yoksa None.
+    1. Geçmiş bazlı: mevcut fiyat son `window_days` içindeki ÖNCEKİ en
+       düşüğün ALTINA indi.
+    2. Site bazlı: site kendi listelemesinde üstü çizili eski fiyat
+       (`listing.original_price`) gösteriyor ve fark gerçek bir indirim.
+       Geçmiş henüz yokken bile (yeni taranmış ürünler) fırsat olarak
+       gözükmesini sağlar.
+
+    `recorded_at` verilirse bu tarihten **önceki** kayıtlar kullanılır;
+    scanner kendi yeni yazdığı kaydı hariç tutar.
     """
     previous_min = db.previous_min_price(
         listing.url, window_days, before=recorded_at
@@ -33,22 +36,35 @@ def detect_deal(
         listing.url, window_days, before=recorded_at
     )
 
-    # Önceki bir kayıt yoksa karşılaştırma yapamayız
-    if previous_min is None or previous_points < 1:
-        return None
+    # 1) Geçmiş bazlı fırsat
+    if (
+        previous_min is not None
+        and previous_points >= 1
+        and listing.price < previous_min
+    ):
+        discount_pct: Optional[float] = None
+        if previous_min > 0:
+            discount_pct = max(
+                0.0, (previous_min - listing.price) / previous_min * 100
+            )
+        return Deal(
+            listing=listing,
+            historical_min=previous_min,
+            history_points=previous_points,
+            discount_pct=discount_pct,
+        )
 
-    # Fiyat değişmemiş veya artmışsa fırsat değil (%0 indirimi filtrele)
-    if listing.price >= previous_min:
-        return None
+    # 2) Site bazlı fırsat — ürün kartında üstü çizili eski fiyat varsa
+    op = listing.original_price
+    if op is not None and op > listing.price:
+        site_discount_pct = (op - listing.price) / op * 100
+        # Çok ufak farkları (yuvarlama, kuruş) eleyelim
+        if site_discount_pct >= 1.0:
+            return Deal(
+                listing=listing,
+                historical_min=op,
+                history_points=previous_points or 0,
+                discount_pct=site_discount_pct,
+            )
 
-    # İndirim % — ÖNCEKİ en düşüğe göre (sütun başlığıyla tutarlı)
-    discount_pct: Optional[float] = None
-    if previous_min > 0:
-        discount_pct = max(0.0, (previous_min - listing.price) / previous_min * 100)
-
-    return Deal(
-        listing=listing,
-        historical_min=previous_min,
-        history_points=previous_points,
-        discount_pct=discount_pct,
-    )
+    return None

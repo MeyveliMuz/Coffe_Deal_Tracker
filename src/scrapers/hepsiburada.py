@@ -92,6 +92,8 @@ class HepsiburadaScraper(BaseScraper):
                     continue
                 if not self._brand_matches(listing.name, brand):
                     continue
+                if not self._is_whole_bean(listing.name):
+                    continue
                 results.append(listing)
 
             return results
@@ -137,6 +139,20 @@ class HepsiburadaScraper(BaseScraper):
             if price is None or price <= 0:
                 return None
 
+            # Üstü çizili / önceki fiyat
+            original_price: float | None = None
+            old_el = (
+                await card.query_selector("[data-test-id='price-prev-price']")
+                or await card.query_selector("div[class*='prevPrice']")
+                or await card.query_selector("span[class*='prevPrice']")
+                or await card.query_selector("del")
+            )
+            if old_el is not None:
+                old_txt = (await old_el.inner_text()).strip()
+                old_val = self._parse_price_tr(old_txt)
+                if old_val is not None and old_val > price:
+                    original_price = old_val
+
             # Resim
             img_el = await card.query_selector("img")
             image_url = None
@@ -153,6 +169,7 @@ class HepsiburadaScraper(BaseScraper):
                 site=self.site_name,
                 brand=brand.lower(),
                 image_url=image_url,
+                original_price=original_price,
             )
         except Exception as exc:
             log.debug("Hepsiburada kart parse hatası: %s", exc)
