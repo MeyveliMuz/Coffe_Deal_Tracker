@@ -35,8 +35,8 @@ class _NumericItem(QTableWidgetItem):
 
 HEADERS_ALL = ["Marka", "Ürün", "Site", "Fiyat", "Grafik", "Aç"]
 HEADERS_DEALS = [
-    "Marka", "Ürün", "Site", "Fiyat", "Önceki En Düşük",
-    "İndirim (min'e göre)", "Grafik", "Aç",
+    "Marka", "Ürün", "Site", "Fiyat", "İndirimsiz Fiyat",
+    "Önceki Fiyat", "İndirim", "Grafik", "Aç",
 ]
 
 
@@ -152,17 +152,35 @@ class DealTable(QTableWidget):
                 name_item.setData(Qt.ItemDataRole.UserRole + 1, title)
             self._set(row, 2, l.site.title())
             self._set_numeric(row, 3, f"{l.price:,.2f} {l.currency}", l.price)
-            self._set_numeric(
-                row, 4, f"{deal.historical_min:,.2f}", deal.historical_min
-            )
-            if deal.discount_pct is not None:
+
+            # İndirimsiz Fiyat: site strikethrough varsa
+            if deal.original_price is not None:
                 self._set_numeric(
-                    row, 5, f"%{deal.discount_pct:.1f}", deal.discount_pct
+                    row, 4, f"{deal.original_price:,.2f}", deal.original_price
+                )
+            else:
+                self._set_numeric(row, 4, "—", -1.0)
+
+            # Önceki Fiyat: son değişim öncesi fiyat (mevcut fiyattan farklı son log)
+            if deal.previous_logged_price is not None:
+                self._set_numeric(
+                    row, 5,
+                    f"{deal.previous_logged_price:,.2f}",
+                    deal.previous_logged_price,
                 )
             else:
                 self._set_numeric(row, 5, "—", -1.0)
-            self._set_chart_button(row, 6, l.url, title)
-            self._set_open_button(row, 7, l.url)
+
+            # İndirim %
+            if deal.discount_pct is not None:
+                self._set_numeric(
+                    row, 6, f"%{deal.discount_pct:.1f}", deal.discount_pct
+                )
+            else:
+                self._set_numeric(row, 6, "—", -1.0)
+
+            self._set_chart_button(row, 7, l.url, title)
+            self._set_open_button(row, 8, l.url)
         finally:
             self.setSortingEnabled(was_sorting)
 

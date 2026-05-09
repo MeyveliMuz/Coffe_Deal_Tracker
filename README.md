@@ -1,17 +1,29 @@
 # Coffee Deal Tracker
 
-Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve çekirdeği markalarını (Meinl, Tchibo, Lavazza vb.) tarayıp son 30 günün en düşük fiyatının altına inen ürünleri bulan bir Windows masaüstü uygulaması.
+Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve çekirdeği markalarını (Meinl, Tchibo, Lavazza vb.) tarayıp fırsatları bulan Windows masaüstü uygulaması. Hem kendi geçmiş fiyatına göre düşüşleri, hem de site üzerinde gösterilen indirimleri tespit eder.
 
 - **Dil/Framework**: Python 3.11+ · PySide6 · Playwright · SQLite
 - **Bildirim**: Yalnızca uygulama içinde (Windows toast / e-posta / Telegram yok)
 - **Arkaplan**: Yok — pencere kapatıldığında her şey durur
+
+## Özellikler
+
+- **İki yönlü fırsat tespiti**:
+  - Geçmiş bazlı: Fiyat son N günün en düşüğünün altına indi mi?
+  - Site bazlı: Üründe üstü çizili eski fiyat (strikethrough) gösteriliyor mu?
+- **Çekirdek-only filtre**: Öğütülmüş, kapsül, filtre, instant ve granül ürünler otomatik elenir.
+- **Fiyat geçmişi grafiği**: Her ürün için 90 günlük çizgi grafik. Node'a hover/tıkla → fiyat + tarih tooltip'i.
+- **Akıllı sütunlar (Fırsatlar)**: Şu anki Fiyat · İndirimsiz Fiyat (site strike) · Önceki Fiyat (son değişim öncesi) · İndirim %.
+- **Sayısal sıralama**: Fiyat / İndirim sütunları gerçek değere göre sıralanır.
+- **Kalıcı snapshot**: Uygulama kapanıp açıldığında son taramadaki fırsatlar yeniden tarama gerektirmeden görünür.
+- **Bot koruma toleransı**: Site başına izole tarayıcı context'i; bir site bloklansa bile diğerleri etkilenmez.
 
 ---
 
 ## Kurulum (geliştirici)
 
 ```powershell
-cd C:\Users\taleb\Desktop\coffee-deal-tracker
+cd <repo-kökü>
 pip install -r requirements.txt
 python -m playwright install chromium
 ```
@@ -73,15 +85,17 @@ python src/main.py
 ## Nasıl çalışır?
 
 1. Çift tıklayıp uygulamayı açarsınız.
-2. **Taramayı Başlat** → her site × her marka için Playwright headless Chromium arka planda arama yapar.
-3. Bulunan her ürün `data/price_history.db` içindeki SQLite veritabanına yazılır (fiyat + zaman damgası).
-4. Ürün fiyatı **son 30 günün en düşüğünün altına** indiyse **Fırsatlar** sekmesine eklenir (aynı fiyat kalırsa fırsat sayılmaz — %0 indirim gürültüsü filtrelenir).
-5. **Tüm Ürünler** sekmesi taranan her şeyi gösterir.
-6. Pencereyi kapattığınızda: aktif tarama iptal edilir, Playwright kapanır, SQLite bağlantısı kapanır, süreç sonlanır. Arkaplanda hiçbir şey kalmaz.
+2. Açılışta DB'deki son 48 saatin snapshot'ı yüklenir; varsa fırsatlar **Fırsatlar** sekmesinde görünür.
+3. **Taramayı Başlat** → her site × her marka için Playwright headless Chromium arka planda arama yapar.
+4. Bulunan her ürün `data/price_history.db` içindeki SQLite veritabanına yazılır (fiyat, üstü çizili eski fiyat, zaman damgası).
+5. Ürün fiyatı son N günün en düşüğünün ALTINA indiyse VEYA sitede üstü çizili eski fiyat varsa **Fırsatlar** sekmesine eklenir.
+6. **Tüm Ürünler** sekmesi taranan her şeyi gösterir.
+7. Bir ürünün satırında 📈 **Grafik** butonuna basarak (veya satıra çift tıklayarak) 90 günlük fiyat geçmişini açabilirsiniz.
+8. Pencereyi kapattığınızda: aktif tarama iptal edilir, Playwright kapanır, SQLite bağlantısı kapanır, süreç sonlanır. Arkaplanda hiçbir şey kalmaz.
 
 ### İlk gün problemi
 
-İlk çalıştırmada fiyat geçmişi boş olduğu için hiçbir ürün "fırsat" sayılmaz. Bu normaldir — uygulamayı birkaç gün açık bırakın (veya birkaç kere açın), geçmiş birikince **Fırsatlar** sekmesi dolmaya başlar.
+İlk taramada geçmiş bazlı fırsatlar görünmez (geçmiş henüz yok). Ancak sitelerin üstü çizili indirim gösterdiği ürünler **site bazlı fırsat** olarak hemen listelenir. Birkaç tarama sonrası geçmiş bazlı tespit de devreye girer.
 
 ---
 
@@ -109,7 +123,8 @@ coffee-deal-tracker/
 │   ├── main.py              # giriş noktası
 │   ├── ui/
 │   │   ├── main_window.py   # pencere, buton, sekmeler
-│   │   └── deal_table.py    # ürün/fırsat tablosu
+│   │   ├── deal_table.py    # ürün/fırsat tablosu (sayısal sıralama)
+│   │   └── price_chart.py   # 90 günlük fiyat geçmişi grafiği
 │   ├── scrapers/
 │   │   ├── base.py          # BaseScraper + yardımcılar
 │   │   ├── trendyol.py
@@ -121,7 +136,7 @@ coffee-deal-tracker/
 │       ├── config.py        # AppConfig loader
 │       ├── models.py        # dataclass'lar
 │       ├── scanner.py       # QThread scan worker
-│       └── deal_detector.py # 30-gün en düşük mantığı
+│       └── deal_detector.py # geçmiş + site indirim mantığı
 └── data/
     └── price_history.db     # otomatik oluşur
 ```

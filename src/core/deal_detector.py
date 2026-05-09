@@ -35,6 +35,9 @@ def detect_deal(
     previous_points = db.history_count(
         listing.url, window_days, before=recorded_at
     )
+    previous_logged = db.previous_logged_price(
+        listing.url, before=recorded_at, different_from=listing.price
+    )
 
     # 1) Geçmiş bazlı fırsat
     if (
@@ -52,6 +55,8 @@ def detect_deal(
             historical_min=previous_min,
             history_points=previous_points,
             discount_pct=discount_pct,
+            original_price=listing.original_price,
+            previous_logged_price=previous_logged,
         )
 
     # 2) Site bazlı fırsat — ürün kartında üstü çizili eski fiyat varsa
@@ -62,9 +67,11 @@ def detect_deal(
         if site_discount_pct >= 1.0:
             return Deal(
                 listing=listing,
-                historical_min=op,
+                historical_min=previous_min,
                 history_points=previous_points or 0,
                 discount_pct=site_discount_pct,
+                original_price=op,
+                previous_logged_price=previous_logged,
             )
 
     return None

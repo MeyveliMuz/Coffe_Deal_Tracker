@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -31,13 +32,17 @@ class _PricePlot(QWidget):
     def __init__(self, points: Sequence[tuple[datetime, float]], parent=None) -> None:
         super().__init__(parent)
         self._points = list(points)
+        self._node_screen_pts: list[QPointF] = []
+        self._hover_idx: int | None = None
         self.setMinimumSize(560, 320)
+        self.setMouseTracking(True)
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect()
         p.fillRect(rect, QColor("#ffffff"))
+        self._node_screen_pts = []
 
         if not self._points:
             p.setPen(QColor("#888"))
@@ -112,7 +117,18 @@ class _PricePlot(QWidget):
         p.setBrush(QColor("#0066cc"))
         for t, pr in self._points:
             xy = to_xy(t, pr)
+            self._node_screen_pts.append(xy)
             p.drawEllipse(xy, 3, 3)
+
+        # Hover edilen nokta için dış halka
+        if (
+            self._hover_idx is not None
+            and 0 <= self._hover_idx < len(self._node_screen_pts)
+        ):
+            hxy = self._node_screen_pts[self._hover_idx]
+            p.setPen(QPen(QColor("#0066cc"), 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawEllipse(hxy, 6, 6)
 
         # Min/güncel etiket
         cur_t, cur_p = self._points[-1]
@@ -124,6 +140,54 @@ class _PricePlot(QWidget):
         p.drawText(x0 + 8, info_y, f"Güncel: {cur_p:,.2f} TL ({cur_t.strftime('%d.%m %H:%M')})")
         p.setPen(QColor("#cc3300"))
         p.drawText(x0 + 8, info_y + 16, f"Min: {min_p:,.2f} TL ({min_t.strftime('%d.%m')})")
+
+    # -- Etkileşim --------------------------------------------------------
+    def _nearest_node(self, pos: QPointF, max_dist: float = 10.0) -> int | None:
+        if not self._node_screen_pts:
+            return None
+        best_idx: int | None = None
+        best_d2 = max_dist * max_dist
+        for i, npt in enumerate(self._node_screen_pts):
+            dx = npt.x() - pos.x()
+            dy = npt.y() - pos.y()
+            d2 = dx * dx + dy * dy
+            if d2 <= best_d2:
+                best_d2 = d2
+                best_idx = i
+        return best_idx
+
+    def _show_node_tooltip(self, idx: int, global_pos) -> None:
+        t, pr = self._points[idx]
+        text = f"{pr:,.2f} TL\n{t.strftime('%d.%m.%Y %H:%M')}"
+        QToolTip.showText(global_pos, text, self)
+
+    def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]
+        pos = ev.position() if hasattr(ev, "position") else QPointF(ev.pos())
+        idx = self._nearest_node(pos)
+        if idx != self._hover_idx:
+            self._hover_idx = idx
+            self.update()
+        if idx is not None:
+            self._show_node_tooltip(idx, ev.globalPosition().toPoint() if hasattr(ev, "globalPosition") else ev.globalPos())
+        else:
+            QToolTip.hideText()
+        super().mouseMoveEvent(ev)
+
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+        pos = ev.position() if hasattr(ev, "position") else QPointF(ev.pos())
+        idx = self._nearest_node(pos)
+        if idx is not None:
+            self._hover_idx = idx
+            self.update()
+            self._show_node_tooltip(idx, ev.globalPosition().toPoint() if hasattr(ev, "globalPosition") else ev.globalPos())
+        super().mousePressEvent(ev)
+
+    def leaveEvent(self, ev) -> None:  # type: ignore[override]
+        if self._hover_idx is not None:
+            self._hover_idx = None
+            self.update()
+        QToolTip.hideText()
+        super().leaveEvent(ev)
 
 
 class PriceChartDialog(QDialog):

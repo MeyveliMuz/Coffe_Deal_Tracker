@@ -22,11 +22,12 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 CREATE TABLE IF NOT EXISTS price_history (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_url  TEXT NOT NULL REFERENCES products(url) ON DELETE CASCADE,
-    price        REAL NOT NULL,
-    currency     TEXT NOT NULL DEFAULT 'TRY',
-    recorded_at  TIMESTAMP NOT NULL
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_url    TEXT NOT NULL REFERENCES products(url) ON DELETE CASCADE,
+    price          REAL NOT NULL,
+    currency       TEXT NOT NULL DEFAULT 'TRY',
+    recorded_at    TIMESTAMP NOT NULL,
+    original_price REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_history_product_time
@@ -66,6 +67,16 @@ class PriceDatabase:
         assert self._conn is not None
         with self._lock:
             self._conn.executescript(SCHEMA)
+            # Migration: eski DB'lerde original_price kolonu yoksa ekle
+            cols = [
+                r[1] for r in self._conn.execute(
+                    "PRAGMA table_info(price_history)"
+                ).fetchall()
+            ]
+            if "original_price" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE price_history ADD COLUMN original_price REAL"
+                )
             self._conn.commit()
 
     def close(self) -> None:
@@ -121,15 +132,16 @@ class PriceDatabase:
         price: float,
         currency: str = "TRY",
         recorded_at: Optional[datetime] = None,
+        original_price: Optional[float] = None,
     ) -> None:
         when = recorded_at or datetime.now()
         with self._cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO price_history(product_url, price, currency, recorded_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO price_history(product_url, price, currency, recorded_at, original_price)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (product_url, float(price), currency, when),
+                (product_url, float(price), currency, when, original_price),
             )
 
     def record_listing(self, listing: ProductListing) -> datetime:
@@ -138,7 +150,13 @@ class PriceDatabase:
         kendini hariç tutabilir."""
         now = datetime.now()
         self.upsert_product(listing)
-        self.record_price(listing.url, listing.price, listing.currency, recorded_at=now)
+        self.record_price(
+            listing.url,
+            listing.price,
+            listing.currency,
+            recorded_at=now,
+            original_price=listing.original_price,
+        )
         return now
 
     # --- reads ---------------------------------------------------------------
@@ -186,6 +204,32 @@ class PriceDatabase:
                     """,
                     (product_url, before),
                 )
+            row = cur.fetchone()
+            return row[0] if row and row[0] is not None else None
+
+    def previous_logged_price(
+        self,
+        product_url: str,
+        *,
+        before: Optional[datetime] = None,
+        different_from: Optional[float] = None,
+        tolerance: float = 0.01,
+    ) -> Optional[float]:
+        """Önceki tarama fiyatı.
+        `different_from` verilirse o değerden farklı (|fark| > tolerance) en yeni
+        kaydın fiyatını döner — yani 'son değişim öncesi fiyat'. Verilmezse
+        zaman olarak hemen önceki kaydın fiyatı."""
+        with self._cursor() as cur:
+            params: list = [product_url]
+            sql = "SELECT price FROM price_history WHERE product_url = ?"
+            if before is not None:
+                sql += " AND recorded_at < ?"
+                params.append(before)
+            if different_from is not None:
+                sql += " AND ABS(price - ?) > ?"
+                params.extend([different_from, tolerance])
+            sql += " ORDER BY recorded_at DESC LIMIT 1"
+            cur.execute(sql, params)
             row = cur.fetchone()
             return row[0] if row and row[0] is not None else None
 
@@ -271,10 +315,10 @@ class PriceDatabase:
             cur.execute(
                 f"""
                 SELECT p.url, p.name, p.brand, p.site, p.image_url,
-                       ph.price, ph.currency, ph.recorded_at
+                       ph.price, ph.currency, ph.recorded_at, ph.original_price
                 FROM products p
                 JOIN (
-                    SELECT product_url, price, currency, recorded_at,
+                    SELECT product_url, price, currency, recorded_at, original_price,
                            ROW_NUMBER() OVER (
                                PARTITION BY product_url
                                ORDER BY recorded_at DESC
@@ -295,6 +339,7 @@ class PriceDatabase:
                     recorded_at = datetime.fromisoformat(recorded_at)
                 except ValueError:
                     recorded_at = datetime.now()
+            op = r[8] if len(r) > 8 else None
             listing = ProductListing(
                 url=r[0],
                 name=r[1],
@@ -303,6 +348,7 @@ class PriceDatabase:
                 image_url=r[4],
                 price=float(r[5]),
                 currency=r[6] or "TRY",
+                original_price=float(op) if op is not None else None,
             )
             out.append((listing, recorded_at))
         return out
