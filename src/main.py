@@ -41,6 +41,24 @@ def _configure_playwright_browsers_path() -> Path:
 _BROWSERS_ROOT = _configure_playwright_browsers_path()
 
 
+def _set_windows_app_user_model_id() -> None:
+    """Windows görev çubuğunda exe'nin kendi ikonunun çıkması için
+    AppUserModelID set et. Olmadan Windows process'i python.exe ile
+    eşleştirip jenerik ikon gösterir."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "CoffeeDealTracker.App.1"
+        )
+    except Exception:
+        pass
+
+
+_set_windows_app_user_model_id()
+
+
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 

@@ -1,23 +1,31 @@
 # Coffee Deal Tracker
 
-Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını (Meinl, Tchibo, Lavazza vb.) tarayıp son 90 günün en düşük fiyatının altına inen ürünleri bulan bir Windows masaüstü uygulaması.
-
-**Öne çıkan özellikler:**
-- 🔍 **Sonuçlarda arama** — tablonun üstündeki kutuyla marka/ürün/site filtreleme
-- ⚙ **Özelleştirilebilir filtreler** — popüler marka listesinden kutucukla seçim + serbest metinle kendi markanı ekleme; ürün türü (Çekirdek / Öğütülmüş / Kapsül / Filtre / Türk Kahvesi / Granül) kutucukları
-- 📅 **Ayarlanabilir indirim penceresi** (varsayılan 90 gün)
-- 🚀 **Otomatik başlatma** — Windows oturum açılışında başlatma ve/veya her açılışta otomatik tarama
+Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını (Meinl, Tchibo, Lavazza vb.) tarayıp fırsatları bulan bir Windows masaüstü uygulaması. Hem kendi geçmiş fiyatına göre düşüşleri, hem de site üzerinde gösterilen indirimleri tespit eder.
 
 - **Dil/Framework**: Python 3.11+ · PySide6 · Playwright · SQLite
 - **Bildirim**: Yalnızca uygulama içinde (Windows toast / e-posta / Telegram yok)
 - **Arkaplan**: Yok — pencere kapatıldığında her şey durur
+
+## Özellikler
+
+- **İki yönlü fırsat tespiti**:
+  - Geçmiş bazlı: Fiyat son N günün en düşüğünün altına indi mi?
+  - Site bazlı: Üründe üstü çizili eski fiyat (strikethrough) gösteriliyor mu?
+- **Sonuçlarda arama**: Tablonun üstündeki 🔍 kutuyla marka/ürün/site bazında anlık filtreleme.
+- **Özelleştirilebilir filtreler (⚙ Filtreler)**: Popüler marka listesinden kutucukla seçim + serbest metinle kendi markanı ekleme; ürün türü kategorileri (çekirdek/öğütülmüş/kapsül/filtre/türk/granül — varsayılan yalnızca çekirdek); ayarlanabilir indirim penceresi (varsayılan 90 gün).
+- **Otomatik başlatma**: Windows oturum açılışında başlatma ve/veya her açılışta otomatik tarama (⚙ Filtreler'den açılır).
+- **Fiyat geçmişi grafiği**: Her ürün için 90 günlük çizgi grafik. Node'a hover/tıkla → fiyat + tarih tooltip'i.
+- **Akıllı sütunlar (Fırsatlar)**: Şu anki Fiyat · İndirimsiz Fiyat (site strike) · Önceki Fiyat (son değişim öncesi) · İndirim %.
+- **Sayısal sıralama**: Fiyat / İndirim sütunları gerçek değere göre sıralanır.
+- **Kalıcı snapshot**: Uygulama kapanıp açıldığında son taramadaki fırsatlar yeniden tarama gerektirmeden görünür.
+- **Bot koruma toleransı**: Site başına izole tarayıcı context'i; bir site bloklansa bile diğerleri etkilenmez.
 
 ---
 
 ## Kurulum (geliştirici)
 
 ```powershell
-cd C:\Users\taleb\Desktop\coffee-deal-tracker
+cd <repo-kökü>
 pip install -r requirements.txt
 python -m playwright install chromium
 ```
@@ -87,16 +95,18 @@ python src/main.py
 ## Nasıl çalışır?
 
 1. Çift tıklayıp uygulamayı açarsınız.
-2. (İsteğe bağlı) **⚙ Filtreler** ile markaları, ürün türlerini, indirim penceresini ve otomatik başlatmayı ayarlarsınız.
-3. **Taramayı Başlat** → seçili her site × her marka için Playwright headless Chromium arka planda arama yapar.
-4. Bulunan her ürün `data/price_history.db` içindeki SQLite veritabanına yazılır (fiyat + zaman damgası).
-5. Ürün fiyatı **son 90 günün** (ayarlanabilir) **en düşüğünün altına** indiyse **Fırsatlar** sekmesine eklenir (aynı fiyat kalırsa fırsat sayılmaz — %0 indirim gürültüsü filtrelenir).
-6. **Tüm Ürünler** sekmesi taranan her şeyi gösterir. Üstteki 🔍 arama kutusuyla sonuçlarda marka/ürün/site bazında filtreleme yapabilirsiniz.
-7. Pencereyi kapattığınızda: aktif tarama iptal edilir, Playwright kapanır, SQLite bağlantısı kapanır, süreç sonlanır. Arkaplanda hiçbir şey kalmaz.
+2. Açılışta DB'deki son 48 saatin snapshot'ı yüklenir; varsa fırsatlar **Fırsatlar** sekmesinde görünür.
+3. (İsteğe bağlı) **⚙ Filtreler** ile markaları, ürün türlerini, indirim penceresini ve otomatik başlatmayı ayarlarsınız.
+4. **Taramayı Başlat** → seçili her site × her marka için Playwright headless Chromium arka planda arama yapar.
+5. Bulunan her ürün `data/price_history.db` içindeki SQLite veritabanına yazılır (fiyat, üstü çizili eski fiyat, zaman damgası).
+6. Ürün fiyatı son N günün (varsayılan 90) en düşüğünün ALTINA indiyse VEYA sitede üstü çizili eski fiyat varsa **Fırsatlar** sekmesine eklenir.
+7. **Tüm Ürünler** sekmesi taranan her şeyi gösterir. Üstteki 🔍 arama kutusuyla sonuçlarda marka/ürün/site bazında filtreleme yapabilirsiniz.
+8. Bir ürünün satırında 📈 **Grafik** butonuna basarak (veya satıra çift tıklayarak) 90 günlük fiyat geçmişini açabilirsiniz.
+9. Pencereyi kapattığınızda: aktif tarama iptal edilir, Playwright kapanır, SQLite bağlantısı kapanır, süreç sonlanır. Arkaplanda hiçbir şey kalmaz.
 
 ### İlk gün problemi
 
-İlk çalıştırmada fiyat geçmişi boş olduğu için hiçbir ürün "fırsat" sayılmaz. Bu normaldir — uygulamayı birkaç gün açık bırakın (veya birkaç kere açın), geçmiş birikince **Fırsatlar** sekmesi dolmaya başlar.
+İlk taramada geçmiş bazlı fırsatlar görünmez (geçmiş henüz yok). Ancak sitelerin üstü çizili indirim gösterdiği ürünler **site bazlı fırsat** olarak hemen listelenir. Birkaç tarama sonrası geçmiş bazlı tespit de devreye girer.
 
 ---
 
@@ -124,9 +134,9 @@ coffee-deal-tracker/
 │   ├── main.py              # giriş noktası (--autoscan argümanını destekler)
 │   ├── ui/
 │   │   ├── main_window.py   # pencere, buton, arama çubuğu, sekmeler
-│   │   ├── deal_table.py    # ürün/fırsat tablosu + arama filtresi
+│   │   ├── deal_table.py    # ürün/fırsat tablosu (arama filtresi + sayısal sıralama)
 │   │   ├── filter_dialog.py # marka/ürün türü/pencere/oto-başlatma ayar penceresi
-│   │   └── price_chart.py   # fiyat geçmişi grafiği dialog
+│   │   └── price_chart.py   # 90 günlük fiyat geçmişi grafiği
 │   ├── scrapers/
 │   │   ├── base.py          # BaseScraper + ürün türü sınıflandırma
 │   │   ├── trendyol.py
@@ -139,7 +149,7 @@ coffee-deal-tracker/
 │       ├── autostart.py     # Windows başlangıç (registry Run) yönetimi
 │       ├── models.py        # dataclass'lar
 │       ├── scanner.py       # QThread scan worker
-│       └── deal_detector.py # N-gün en düşük + site indirim mantığı
+│       └── deal_detector.py # geçmiş (N-gün en düşük) + site indirim mantığı
 └── data/
     └── price_history.db     # otomatik oluşur
 ```
