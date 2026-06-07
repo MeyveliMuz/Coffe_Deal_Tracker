@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, QTimer
@@ -9,6 +10,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -19,12 +21,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.config import AppConfig, default_config_path, default_db_path
+from src.core import autostart
+from src.core.config import (
+    AppConfig,
+    default_config_path,
+    default_db_path,
+    user_config_path,
+)
 from src.core.deal_detector import detect_deal
 from src.core.models import Deal, ProductListing, ScanSummary
 from src.core.scanner import ScanWorker, start_scan_thread
 from src.storage.db import PriceDatabase
 from src.ui.deal_table import DealTable
+from src.ui.filter_dialog import FilterDialog
 
 
 log = logging.getLogger(__name__)
@@ -56,6 +65,12 @@ class MainWindow(QMainWindow):
         # açtığında son N saatin ürünleri tabloda hazır gelsin.
         self._load_last_snapshot()
 
+        # Açılışta otomatik tarama: ya komut satırında --autoscan var
+        # (Windows başlangıç kısayolu), ya da config'de auto_scan_on_launch açık.
+        if "--autoscan" in sys.argv or self._config.auto_scan_on_launch:
+            # Pencere görünür olduktan sonra tetikle — UI bloklamasın.
+            QTimer.singleShot(1200, self._auto_scan_once)
+
     # -- UI --------------------------------------------------------------------
     def _build_ui(self) -> None:
         central = QWidget()
@@ -70,6 +85,12 @@ class MainWindow(QMainWindow):
         top.addWidget(title)
         top.addStretch(1)
 
+        self.filter_button = QPushButton("⚙ Filtreler")
+        self.filter_button.setMinimumHeight(34)
+        self.filter_button.setToolTip("Marka, ürün türü, indirim penceresi ve otomatik başlatma ayarları")
+        self.filter_button.clicked.connect(self._on_filter_clicked)
+        top.addWidget(self.filter_button)
+
         self.scan_button = QPushButton("Taramayı Başlat")
         self.scan_button.setMinimumWidth(160)
         self.scan_button.setMinimumHeight(34)
@@ -77,29 +98,33 @@ class MainWindow(QMainWindow):
         top.addWidget(self.scan_button)
         root.addLayout(top)
 
-        subtitle = QLabel(
-            f"Siteler: {', '.join(s.title() for s in self._config.sites)}  ·  "
-            f"Markalar: {', '.join(b.title() for b in self._config.brands)}  ·  "
-            f"Pencere: {self._config.history_days} gün"
-        )
-        subtitle.setStyleSheet("color: #666;")
-        subtitle.setWordWrap(True)
-        root.addWidget(subtitle)
+        self.subtitle = QLabel()
+        self.subtitle.setStyleSheet("color: #666;")
+        self.subtitle.setWordWrap(True)
+        root.addWidget(self.subtitle)
 
         # İlk kullanıcı açıklama bandı
-        self.banner = QLabel(
-            "ℹ Fırsatlar sekmesi iki durumda dolar: "
-            f"(1) ürünün fiyatı son {self._config.history_days} günün en düşüğünün "
-            "ALTINA indiyse; (2) sitenin kendi listelemesinde üstü çizili eski fiyat "
-            "varsa (geçmiş henüz yokken bile). "
-            "Bir ürünün fiyat geçmişi grafiğini görmek için satırdaki 'Grafik' butonuna basın."
-        )
+        self.banner = QLabel()
         self.banner.setWordWrap(True)
         self.banner.setStyleSheet(
             "background: #fff7e0; border: 1px solid #f1d07a; "
             "padding: 8px; border-radius: 4px; color: #5a4a00;"
         )
         root.addWidget(self.banner)
+
+        # Config'e bağlı metinleri doldur (subtitle + banner)
+        self._refresh_config_labels()
+
+        # Sonuçlarda arama çubuğu
+        search_row = QHBoxLayout()
+        search_label = QLabel("🔍")
+        search_row.addWidget(search_label)
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("Sonuçlarda ara… (marka, ürün adı veya site)")
+        self.search_box.setClearButtonEnabled(True)
+        self.search_box.textChanged.connect(self._on_search_changed)
+        search_row.addWidget(self.search_box, 1)
+        root.addLayout(search_row)
 
         # Sekmeler
         self.tabs = QTabWidget()
@@ -121,6 +146,76 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
         self._status.showMessage("Hazır. Taramak için butona basın.")
+
+    def _refresh_config_labels(self) -> None:
+        """Config'e bağlı bilgilendirme metinlerini güncel değerlerle yaz."""
+        from src.core.config import PRODUCT_TYPES
+
+        type_labels = [
+            PRODUCT_TYPES.get(t, t) for t in self._config.product_types
+        ]
+        self.subtitle.setText(
+            f"Siteler: {', '.join(s.title() for s in self._config.sites)}  ·  "
+            f"Markalar: {', '.join(b.title() for b in self._config.brands)}  ·  "
+            f"Türler: {', '.join(type_labels)}  ·  "
+            f"Pencere: {self._config.history_days} gün"
+        )
+        self.banner.setText(
+            "ℹ Fırsatlar sekmesi iki durumda dolar: "
+            f"(1) ürünün fiyatı son {self._config.history_days} günün en düşüğünün "
+            "ALTINA indiyse; (2) sitenin kendi listelemesinde üstü çizili eski fiyat "
+            "varsa (geçmiş henüz yokken bile). "
+            "Marka/ürün türü filtrelerini ⚙ Filtreler'den değiştirebilirsiniz. "
+            "Bir ürünün fiyat geçmişi grafiğini görmek için satırdaki 'Grafik' butonuna basın."
+        )
+
+    # -- Arama & Filtreler ----------------------------------------------------
+    def _on_search_changed(self, text: str) -> None:
+        self.deal_table.apply_filter(text)
+        self.all_table.apply_filter(text)
+        self._update_tab_counts()
+
+    def _on_filter_clicked(self) -> None:
+        dlg = FilterDialog(self._config, parent=self)
+        if dlg.exec() != FilterDialog.DialogCode.Accepted:
+            return
+        new_config = dlg.result_config()
+
+        # Otomatik başlatma registry kaydını uygula (config'den bağımsız,
+        # tek doğru kaynak registry).
+        want_autostart = dlg.autostart_enabled()
+        if want_autostart != autostart.is_enabled():
+            ok = autostart.set_enabled(want_autostart)
+            if not ok:
+                QMessageBox.warning(
+                    self,
+                    "Otomatik başlatma",
+                    "Windows başlangıç ayarı kaydedilemedi (kayıt defteri erişimi). "
+                    "Diğer ayarlar yine de kaydedildi.",
+                )
+
+        # config.json'a yaz
+        try:
+            new_config.save(user_config_path())
+        except Exception:
+            log.exception("config.json kaydedilemedi")
+            QMessageBox.critical(
+                self, "Kayıt hatası", "Ayarlar config.json'a kaydedilemedi."
+            )
+            return
+
+        self._config = new_config
+        self._refresh_config_labels()
+        self._status.showMessage(
+            "Ayarlar kaydedildi. Yeni filtrelerle taramak için 'Taramayı Başlat'."
+        )
+
+    def _auto_scan_once(self) -> None:
+        """Açılışta otomatik tek tarama. Zaten bir tarama çalışıyorsa atla."""
+        if self._thread is not None and self._thread.isRunning():
+            return
+        log.info("Otomatik tarama tetikleniyor (açılış)")
+        self._on_scan_clicked()
 
     # -- Persistence ----------------------------------------------------------
     def _load_last_snapshot(self) -> None:
@@ -278,8 +373,15 @@ class MainWindow(QMainWindow):
         msg.exec()
 
     def _update_tab_counts(self) -> None:
-        self.tabs.setTabText(0, f"Fırsatlar ({self.deal_table.rowCount()})")
-        self.tabs.setTabText(1, f"Tüm Ürünler ({self.all_table.rowCount()})")
+        # Arama filtresi aktifse görünen / toplam göster (ör. "Fırsatlar (3/10)").
+        self.tabs.setTabText(0, f"Fırsatlar ({self._count_label(self.deal_table)})")
+        self.tabs.setTabText(1, f"Tüm Ürünler ({self._count_label(self.all_table)})")
+
+    @staticmethod
+    def _count_label(table: DealTable) -> str:
+        total = table.rowCount()
+        visible = table.visible_row_count()
+        return f"{visible}/{total}" if visible != total else str(total)
 
     # -- Close: arkaplan temizliği --------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:

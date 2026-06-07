@@ -130,6 +130,7 @@ class ScanWorker(QObject):
                             max_products=self._config.max_products_per_brand_per_site,
                             request_delay_ms=self._config.request_delay_ms,
                             search_suffix=self._config.search_suffix,
+                            product_types=self._config.product_types,
                         )
 
                         # Bir sitede ilk markada bot koruması alındıysa

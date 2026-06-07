@@ -1,9 +1,25 @@
 {
-  "brands": ["meinl", "tchibo", "whirl", "lavazza", "illy", "kicking horse"],
-  "sites": ["trendyol", "hepsiburada", "amazon_tr"],
-  "history_days": 30,
+  "brands": [
+    "lavazza",
+    "illy",
+    "meinl",
+    "tchibo",
+    "kicking horse",
+    "whirl"
+  ],
+  "sites": [
+    "trendyol",
+    "hepsiburada",
+    "amazon_tr"
+  ],
+  "history_days": 90,
   "max_products_per_brand_per_site": 15,
   "request_delay_ms": 2000,
   "headless": true,
-  "search_suffix": "kahve çekirdeği"
+  "search_suffix": "kahve çekirdeği",
+  "product_types": [
+    "cekirdek"
+  ],
+  "start_with_windows": true,
+  "auto_scan_on_launch": true
 }

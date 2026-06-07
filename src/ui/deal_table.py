@@ -83,6 +83,8 @@ class DealTable(QTableWidget):
 
         # URL'leri duplicate tespiti için sakla
         self._seen_urls: set[str] = set()
+        # Aktif arama metni (sonuçlarda filtreleme). Boş = tümü görünür.
+        self._filter_text: str = ""
         # NOT: Satır → meta eşlemesi yerine ürün adı sütununun item'ında
         # UserRole+1/+2'de saklıyoruz; sıralamada satır indeksleri değişiyor.
 
@@ -95,6 +97,28 @@ class DealTable(QTableWidget):
     def clear_rows(self) -> None:
         self.setRowCount(0)
         self._seen_urls.clear()
+
+    # -- Arama / filtreleme ---------------------------------------------------
+    def apply_filter(self, text: str) -> None:
+        """Marka/ürün/site sütunlarında geçen metne göre satırları göster/gizle."""
+        self._filter_text = text.strip().lower()
+        for row in range(self.rowCount()):
+            self.setRowHidden(row, not self._row_matches(row))
+
+    def _row_matches(self, row: int) -> bool:
+        if not self._filter_text:
+            return True
+        # Marka (0), Ürün (1), Site (2) sütunlarında ara
+        for col in (0, 1, 2):
+            item = self.item(row, col)
+            if item is not None and self._filter_text in item.text().lower():
+                return True
+        return False
+
+    def visible_row_count(self) -> int:
+        return sum(
+            1 for row in range(self.rowCount()) if not self.isRowHidden(row)
+        )
 
     def add_product(self, listing: ProductListing) -> None:
         if self._mode != "all":
@@ -128,6 +152,10 @@ class DealTable(QTableWidget):
             self._set_open_button(row, 5, listing.url)
         finally:
             self.setSortingEnabled(was_sorting)
+        # Aktif arama varsa yeni satır da filtreye uysun (sıralama sonrası
+        # satır indeksleri değiştiği için tüm tabloyu yeniden tara).
+        if self._filter_text:
+            self.apply_filter(self._filter_text)
 
     def add_deal(self, deal: Deal) -> None:
         if self._mode != "deals":
@@ -165,6 +193,8 @@ class DealTable(QTableWidget):
             self._set_open_button(row, 7, l.url)
         finally:
             self.setSortingEnabled(was_sorting)
+        if self._filter_text:
+            self.apply_filter(self._filter_text)
 
     # internal
     def _set(self, row: int, col: int, text: str, *, align_right: bool = False) -> None:

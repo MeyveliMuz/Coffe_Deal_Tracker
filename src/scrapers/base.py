@@ -33,11 +33,14 @@ class BaseScraper(ABC):
         max_products: int = 15,
         request_delay_ms: int = 2000,
         search_suffix: str = "kahve çekirdeği",
+        product_types: list[str] | None = None,
     ) -> None:
         self.context = context
         self.max_products = max_products
         self.request_delay_ms = request_delay_ms
         self.search_suffix = search_suffix
+        # Hangi ürün türleri kabul edilsin. None → varsayılan (yalnızca çekirdek).
+        self.allowed_types: set[str] = set(product_types or ["cekirdek"])
 
     @abstractmethod
     async def search(self, brand: str) -> list[ProductListing]:
@@ -53,6 +56,11 @@ class BaseScraper(ABC):
 
     def _build_query(self, brand: str) -> str:
         suffix = self.search_suffix.strip()
+        # Çekirdek dışı türler de isteniyorsa, çekirdeğe özgü arama sorgusu
+        # ("... kahve çekirdeği") sonuçları gereksiz daraltır. Bu durumda
+        # genel "kahve" araması yapıp türü sonradan filtreleriz.
+        if self.allowed_types and self.allowed_types != {"cekirdek"}:
+            suffix = "kahve"
         return f"{brand} {suffix}".strip() if suffix else brand
 
     @staticmethod
@@ -89,28 +97,40 @@ class BaseScraper(ABC):
         pattern = r"\b" + re.escape(brand.strip()) + r"\b"
         return bool(re.search(pattern, product_name, re.IGNORECASE))
 
-    # Sadece çekirdek kahve istiyoruz; öğütülmüş/kapsül/granül/filtre/instant
-    # ürünleri ürün adına bakıp eliyoruz. Arama suffix'i "kahve çekirdeği"
-    # olsa bile sonuçlara karışıyorlar.
-    _NON_BEAN_KEYWORDS = (
-        "öğütülmüş", "ogutulmus",
-        "kapsül", "kapsul",
-        "granül", "granul",
-        "filtre kahve", "filtre  kahve",
-        "instant", "hazır kahve", "hazir kahve",
-        "pod", "tablet",
-        "nespresso uyumlu", "dolce gusto",
-        "türk kahvesi", "turk kahvesi",
+    # Ürün türü sınıflandırması — ürün adındaki anahtar kelimelere bakar.
+    # Sıra önemli: bir kahve çekirdek dışı bir türe ait anahtar kelime
+    # içeriyorsa o türe atanır; hiçbiriyle eşleşmezse varsayılan "cekirdek".
+    _TYPE_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("kapsul", ("kapsül", "kapsul", "pod", "tablet",
+                    "nespresso uyumlu", "dolce gusto")),
+        ("instant", ("granül", "granul", "instant",
+                     "hazır kahve", "hazir kahve")),
+        ("ogutulmus", ("öğütülmüş", "ogutulmus")),
+        ("filtre", ("filtre kahve", "filtre  kahve")),
+        ("turk", ("türk kahvesi", "turk kahvesi")),
     )
 
     @classmethod
-    def _is_whole_bean(cls, product_name: str) -> bool:
+    def _classify_product(cls, product_name: str) -> str | None:
+        """Ürünün türünü döndür (cekirdek/ogutulmus/kapsul/filtre/turk/instant).
+        Kahve ürünü değilse None."""
         name = product_name.lower()
         # Pozitif kontrol: ad "kahve" veya "coffee" içermeli — kahve markaları
         # giyim/aksesuar gibi alakasız ürünler de satıyor (ör. "Tchibo
         # Dokuma Pijama Takımı"), bunları en başta eleyelim.
         if "kahve" not in name and "coffee" not in name:
+            return None
+        for type_key, keywords in cls._TYPE_KEYWORDS:
+            if any(kw in name for kw in keywords):
+                return type_key
+        # Özel bir tür belirten kelime yoksa çekirdek varsay
+        return "cekirdek"
+
+    def _product_allowed(self, product_name: str) -> bool:
+        """Ürün, seçili türlerden birine ait mi?"""
+        category = self._classify_product(product_name)
+        if category is None:
             return False
-        if any(kw in name for kw in cls._NON_BEAN_KEYWORDS):
-            return False
-        return True
+        # allowed_types boşsa (kullanıcı hepsini kapattıysa) hiçbir şey gelmez;
+        # bu kasıtlı — en az bir tür seçili olması beklenir.
+        return category in self.allowed_types

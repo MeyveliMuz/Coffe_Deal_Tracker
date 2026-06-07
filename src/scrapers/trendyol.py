@@ -57,7 +57,7 @@ class TrendyolScraper(BaseScraper):
                     continue
                 if not self._brand_matches(listing.name, brand):
                     continue
-                if not self._is_whole_bean(listing.name):
+                if not self._product_allowed(listing.name):
                     continue
                 results.append(listing)
 
