@@ -91,6 +91,16 @@ npm --prefix frontend run dev    # http://localhost:5173
 Şu ortam değişkenleri ayarlıysa tetiklenen alarmlar e-posta ile de bildirilir (yoksa yalnızca uygulama içi):
 `CDT_SMTP_HOST`, `CDT_SMTP_PORT`, `CDT_SMTP_USER`, `CDT_SMTP_PASS`, `CDT_ALERT_TO`.
 
+### Yeni site / marka / kategori ekleme
+
+- **Marka & ürün türü:** Tamamen serbesttir — `config.json` (veya ⚙ Filtreler) üzerinden istediğiniz markaları ve ürün türlerini (`cekirdek`, `ogutulmus`, `kapsul`, `filtre`, `turk`, `instant`) seçersiniz. Mimari kahveye özel değildir; suffix'i değiştirip başka kategorilere de uyarlanabilir.
+- **Yeni site:** `src/scrapers/_template.py`'yi kopyalayıp seçicileri doldurun, `register_default_scrapers()`'a ekleyin, `sites`'a adını yazın. Çekirdek (tarama motoru, DB, UI) hiç değişmez — yatay büyüme.
+
+### Dağıtım (deploy)
+
+- **VPS (en basit, gerçek):** Sunucuda repoyu çekip `docker compose up -d`.
+- **PaaS:** `render.yaml` bir Render.com blueprint taslağıdır (backend + frontend). Fly.io / Railway de Docker imajlarıyla çalışır.
+
 ---
 
 ## Yapılandırma (`config.json`)

@@ -1,0 +1,29 @@
+# Render.com blueprint — Coffee Deal Tracker'ı buluta dağıtmak için bir başlangıç.
+# Render hesabında: New → Blueprint → bu repoyu seç. (Test edilmemiş bir taslaktır;
+# servis adları/URL'ler hesabınıza göre değişebilir.)
+#
+# En basit gerçek dağıtım alternatifi: herhangi bir VPS'te `docker compose up -d`.
+services:
+  - type: web
+    name: cdt-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    disk:
+      name: cdt-data
+      mountPath: /app/data
+      sizeGB: 1
+
+  - type: web
+    name: cdt-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      # Frontend'in konuşacağı backend adresi (build sırasında kullanılır).
+      # Backend servisini dağıttıktan sonra onun gerçek URL'iyle değiştirin.
+      - key: VITE_API_BASE
+        value: https://cdt-backend.onrender.com
