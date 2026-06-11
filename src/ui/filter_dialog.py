@@ -136,13 +136,13 @@ class FilterDialog(QDialog):
         )
         # Kayıt defteri tek doğru kaynak — başlangıç durumunu oradan oku.
         self._start_with_windows.setChecked(autostart.is_enabled())
-        self._auto_scan = QCheckBox("Uygulama her açıldığında otomatik tarama yap")
+        self._auto_scan = QCheckBox("O gün ilk açılışta otomatik tarama yap")
         self._auto_scan.setChecked(config.auto_scan_on_launch)
         auto_layout.addWidget(self._start_with_windows)
         auto_layout.addWidget(self._auto_scan)
         note = QLabel(
-            "Not: Windows ile başlatıldığında uygulama her zaman bir tarama yapar; "
-            "ikinci seçenek elle açtığınızda da taramayı tetikler."
+            "Not: Otomatik tarama günde en fazla bir kez, o gün uygulama ilk "
+            "açıldığında çalışır (Windows başlangıcı veya elle açış fark etmez)."
         )
         note.setStyleSheet("color: #666;")
         note.setWordWrap(True)

@@ -111,10 +111,28 @@ def _setup_logging() -> Path:
     return log_path
 
 
+def _set_app_user_model_id() -> None:
+    """Windows görev çubuğunun, host süreç (python/pythonw.exe) yerine
+    UYGULAMANIN kendi ikonunu göstermesi için benzersiz bir AppUserModelID
+    ata. QApplication'dan ÖNCE çağrılmalı. Bu yapılmazsa script/pythonw ile
+    başlatıldığında görev çubuğunda pythonw ikonu görünür."""
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "MeyveliMuz.CoffeeDealTracker"
+        )
+    except Exception:
+        logging.getLogger(__name__).warning("AppUserModelID ayarlanamadı", exc_info=True)
+
+
 def main() -> int:
     log_path = _setup_logging()
     log = logging.getLogger(__name__)
     try:
+        _set_app_user_model_id()
         app = QApplication(sys.argv)
         app.setApplicationName("Coffee Deal Tracker")
         # Uygulama ikonu — pencere + Windows görev çubuğu için

@@ -13,7 +13,7 @@ Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını 
   - Site bazlı: Üründe üstü çizili eski fiyat (strikethrough) gösteriliyor mu?
 - **Sonuçlarda arama**: Tablonun üstündeki 🔍 kutuyla marka/ürün/site bazında anlık filtreleme.
 - **Özelleştirilebilir filtreler (⚙ Filtreler)**: Popüler marka listesinden kutucukla seçim + serbest metinle kendi markanı ekleme; ürün türü kategorileri (çekirdek/öğütülmüş/kapsül/filtre/türk/granül — varsayılan yalnızca çekirdek); ayarlanabilir indirim penceresi (varsayılan 90 gün).
-- **Otomatik başlatma**: Windows oturum açılışında başlatma ve/veya her açılışta otomatik tarama (⚙ Filtreler'den açılır).
+- **Otomatik başlatma**: Windows oturum açılışında başlatma ve/veya o günkü ilk açılışta otomatik tarama (günde en fazla bir kez; ⚙ Filtreler'den açılır).
 - **Fiyat geçmişi grafiği**: Her ürün için 90 günlük çizgi grafik. Node'a hover/tıkla → fiyat + tarih tooltip'i.
 - **Akıllı sütunlar (Fırsatlar)**: Şu anki Fiyat · İndirimsiz Fiyat (site strike) · Önceki Fiyat (son değişim öncesi) · İndirim %.
 - **Sayısal sıralama**: Fiyat / İndirim sütunları gerçek değere göre sıralanır.
@@ -84,7 +84,7 @@ python src/main.py
 | `search_suffix` | Her arama sorgusuna eklenen ek kelime (ör. `"meinl kahve çekirdeği"`). Yalnızca çekirdek seçiliyken kullanılır; başka türler de seçilince otomatik olarak genel `"kahve"` aramasına geçilir. |
 | `product_types` | Sonuçlara dahil edilecek ürün türleri: `cekirdek`, `ogutulmus`, `kapsul`, `filtre`, `turk`, `instant`. Varsayılan sadece `cekirdek`. |
 | `start_with_windows` | Windows oturum açılışında otomatik başlat. (Kayıt defteri `HKCU\...\Run` ile yönetilir; uygulama içinden de açılıp kapatılabilir.) |
-| `auto_scan_on_launch` | Uygulama her açıldığında otomatik bir tarama başlat. |
+| `auto_scan_on_launch` | O gün uygulama ilk açıldığında otomatik bir tarama başlat (günde en fazla bir kez). |
 
 > Bu ayarların çoğu uygulama içindeki **⚙ Filtreler** penceresinden değiştirilebilir; "Kaydet" dediğinizde `config.json` güncellenir. Elle de düzenleyebilirsiniz.
 

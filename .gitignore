@@ -8,6 +8,7 @@ data/*.db-wal
 data/*.db-shm
 data/*.log
 data/*.html
+data/*.json
 build/
 dist/
 *.spec

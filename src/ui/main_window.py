@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core import autostart
+from src.core import app_state, autostart
 from src.core.config import (
     AppConfig,
     default_config_path,
@@ -67,7 +67,10 @@ class MainWindow(QMainWindow):
 
         # Açılışta otomatik tarama: ya komut satırında --autoscan var
         # (Windows başlangıç kısayolu), ya da config'de auto_scan_on_launch açık.
-        if "--autoscan" in sys.argv or self._config.auto_scan_on_launch:
+        # Günde en fazla bir kez — yalnızca o gün ilk açılışta çalışır.
+        auto_trigger = "--autoscan" in sys.argv or self._config.auto_scan_on_launch
+        if auto_trigger and not app_state.has_autoscanned_today():
+            app_state.mark_autoscanned_today()
             # Pencere görünür olduktan sonra tetikle — UI bloklamasın.
             QTimer.singleShot(1200, self._auto_scan_once)
 
