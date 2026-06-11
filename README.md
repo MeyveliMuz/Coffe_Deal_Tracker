@@ -56,6 +56,43 @@ python src/main.py
 
 ---
 
+## Web Platformu (backend + frontend)
+
+Masaüstü (Qt) uygulamasının yanında, aynı tarama çekirdeğini (`src/core/scan_engine.py`) paylaşan bir **web yığını** vardır:
+
+- **`backend/`** — FastAPI (REST + WebSocket). Fırsatlar, ürünler, fiyat geçmişi, fiyat alarmları ve zamanlanmış tarama.
+- **`frontend/`** — React + Vite + Tailwind. Modern arayüz; canlı tarama ilerlemesi WebSocket ile.
+
+### Docker ile (önerilen)
+
+```bash
+docker compose up --build
+```
+
+- Frontend: `http://localhost:5173`
+- API + Swagger: `http://localhost:8000/docs`
+
+### Docker olmadan (geliştirme)
+
+```powershell
+# 1) Backend
+py -3.14 -m uvicorn backend.main:app --reload --port 8000
+# 2) Frontend (ayrı terminal)
+npm --prefix frontend install   # ilk kez
+npm --prefix frontend run dev    # http://localhost:5173
+```
+
+### CI
+
+`.github/workflows/ci.yml` her push/PR'da: backend derleme + `pytest`, frontend `tsc` + Vite build, ve iki Docker imajının build'ini çalıştırır.
+
+### Fiyat alarmı e-postası (opsiyonel)
+
+Şu ortam değişkenleri ayarlıysa tetiklenen alarmlar e-posta ile de bildirilir (yoksa yalnızca uygulama içi):
+`CDT_SMTP_HOST`, `CDT_SMTP_PORT`, `CDT_SMTP_USER`, `CDT_SMTP_PASS`, `CDT_ALERT_TO`.
+
+---
+
 ## Yapılandırma (`config.json`)
 
 ```json

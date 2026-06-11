@@ -1,0 +1,25 @@
+# Coffee Deal Tracker — tüm yığın (backend + frontend)
+# Çalıştır:  docker compose up --build
+# Frontend:  http://localhost:5173    ·    API/Swagger: http://localhost:8000/docs
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data        # fiyat geçmişi DB'si kalıcı olsun
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE: "http://localhost:8000"
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
