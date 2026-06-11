@@ -14,6 +14,7 @@ from typing import Optional
 from src.core.config import AppConfig
 from src.core.scan_engine import run_scan
 
+from . import notify, services
 from .schemas import deal_to_dict, product_to_dict, summary_to_dict
 
 log = logging.getLogger(__name__)
@@ -139,6 +140,15 @@ class ScanManager:
             self.skipped = list(summary.skipped)
             self.finished_at = summary.finished_at or datetime.now()
             self.status = "error" if summary.errors and summary.products_found == 0 else "done"
+            # Tarama sonrası fiyat alarmlarını kontrol et
+            try:
+                triggered = services.check_alerts()
+                for a in triggered:
+                    self._put({"type": "alert", "alert": a})
+                if triggered:
+                    notify.notify_triggered(triggered)
+            except Exception:
+                log.exception("Alarm kontrolü hatası")
             self._put({"type": "finished", "summary": summary_to_dict(summary)})
         except Exception as exc:  # son çare
             log.exception("Tarama job'u çöktü")

@@ -32,6 +32,19 @@ export interface Config {
   product_types: string[];
   start_with_windows: boolean;
   auto_scan_on_launch: boolean;
+  schedule_enabled: boolean;
+  schedule_time: string;
+}
+
+export interface Alert {
+  id: number;
+  product_url: string;
+  name: string | null;
+  target_price: number;
+  current_price: number | null;
+  created_at: string | null;
+  triggered_at: string | null;
+  triggered_price: number | null;
 }
 
 export interface ScanStatus {
@@ -74,6 +87,15 @@ export const api = {
     fetch(`${API_BASE}/api/history?url=${encodeURIComponent(url)}`).then((r) =>
       asJson<HistoryPoint[]>(r)
     ),
+  alerts: () => fetch(`${API_BASE}/api/alerts`).then((r) => asJson<Alert[]>(r)),
+  addAlert: (url: string, target_price: number) =>
+    fetch(`${API_BASE}/api/alerts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, target_price }),
+    }).then((r) => asJson<Alert>(r)),
+  deleteAlert: (id: number) =>
+    fetch(`${API_BASE}/api/alerts/${id}`, { method: "DELETE" }),
 };
 
 export function fmtPrice(n: number): string {

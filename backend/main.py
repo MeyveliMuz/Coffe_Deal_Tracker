@@ -13,16 +13,18 @@ from pathlib import Path
 # `src` paketini import edebilmek için proje kökünü path'e ekle
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import dataclasses
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import AppConfig
 
-from . import services
+from . import scheduler, services
 from .scan_manager import manager
 from .schemas import (
+    AlertIn,
+    AlertOut,
     ConfigModel,
     DealOut,
     HistoryPoint,
@@ -35,10 +37,19 @@ from .schemas import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Açılışta zamanlayıcıyı başlat (config'e göre günlük tarama kurar)
+    scheduler.start_scheduler()
+    yield
+    scheduler.stop_scheduler()
+
+
 app = FastAPI(
     title="Coffee Deal Tracker API",
     version="0.1.0",
     description="Masaüstü uygulamasıyla aynı çekirdeği paylaşan web backend'i.",
+    lifespan=lifespan,
 )
 
 # Geliştirme için CORS — Vite (5173) ve CRA (3000) origin'leri + yerel
@@ -78,8 +89,11 @@ def put_config(cfg: ConfigModel) -> dict:
         product_types=[t.strip().lower() for t in cfg.product_types] or ["cekirdek"],
         start_with_windows=cfg.start_with_windows,
         auto_scan_on_launch=cfg.auto_scan_on_launch,
+        schedule_enabled=cfg.schedule_enabled,
+        schedule_time=cfg.schedule_time,
     )
     services.save_config(new_cfg)
+    scheduler.reschedule(new_cfg)  # zamanlama değiştiyse job'u güncelle
     return new_cfg.to_dict()
 
 
@@ -99,6 +113,33 @@ def get_deals() -> list[dict]:
 def get_history(url: str, window_days: int = 90) -> list[dict]:
     points = services.price_history(url, window_days=window_days)
     return [{"t": t, "price": p} for t, p in points]
+
+
+@app.get("/api/alerts", response_model=list[AlertOut])
+def get_alerts() -> list[dict]:
+    return services.list_alerts()
+
+
+@app.post("/api/alerts", response_model=AlertOut, status_code=201)
+def create_alert(alert: AlertIn) -> dict:
+    if alert.target_price <= 0:
+        raise HTTPException(status_code=400, detail="Hedef fiyat 0'dan büyük olmalı")
+    return services.add_alert(alert.url, alert.target_price)
+
+
+@app.delete("/api/alerts/{alert_id}", status_code=204)
+def remove_alert(alert_id: int) -> None:
+    services.delete_alert(alert_id)
+
+
+@app.get("/api/schedule")
+def schedule_info() -> dict:
+    cfg = services.load_config()
+    return {
+        "enabled": cfg.schedule_enabled,
+        "time": cfg.schedule_time,
+        "next_run": scheduler.next_run(),
+    }
 
 
 @app.get("/api/scan", response_model=ScanStatus)

@@ -48,6 +48,24 @@ class ConfigModel(BaseModel):
     product_types: list[str] = ["cekirdek"]
     start_with_windows: bool = False
     auto_scan_on_launch: bool = False
+    schedule_enabled: bool = False
+    schedule_time: str = "09:00"
+
+
+class AlertIn(BaseModel):
+    url: str
+    target_price: float
+
+
+class AlertOut(BaseModel):
+    id: int
+    product_url: str
+    name: Optional[str] = None
+    target_price: float
+    current_price: Optional[float] = None
+    created_at: Optional[str] = None
+    triggered_at: Optional[str] = None
+    triggered_price: Optional[float] = None
 
 
 class ScanStatus(BaseModel):

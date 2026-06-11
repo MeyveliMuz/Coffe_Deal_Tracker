@@ -58,3 +58,38 @@ def price_history(url: str, window_days: int = 90) -> list[tuple[datetime, float
         return db.price_history(url, window_days=window_days)
     finally:
         db.close()
+
+
+# --- fiyat alarmları --------------------------------------------------------
+def add_alert(url: str, target_price: float) -> dict:
+    db = PriceDatabase(db_path())
+    try:
+        db.add_alert(url, target_price)
+        return next((a for a in db.list_alerts() if a["product_url"] == url), {})
+    finally:
+        db.close()
+
+
+def list_alerts() -> list[dict]:
+    db = PriceDatabase(db_path())
+    try:
+        return db.list_alerts()
+    finally:
+        db.close()
+
+
+def delete_alert(alert_id: int) -> None:
+    db = PriceDatabase(db_path())
+    try:
+        db.delete_alert(alert_id)
+    finally:
+        db.close()
+
+
+def check_alerts() -> list[dict]:
+    """Tarama sonrası çağrılır: hedefin altına inen alarmları tetikler."""
+    db = PriceDatabase(db_path())
+    try:
+        return db.check_alerts()
+    finally:
+        db.close()

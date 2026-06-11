@@ -33,6 +33,9 @@ class AppConfig:
     start_with_windows: bool = False
     # Uygulama her açıldığında otomatik bir tarama başlat.
     auto_scan_on_launch: bool = False
+    # Sunucu tarafı zamanlanmış tarama (backend/APScheduler). Masaüstü kullanmaz.
+    schedule_enabled: bool = False
+    schedule_time: str = "09:00"  # her gün bu yerel saatte (HH:MM)
 
     @classmethod
     def load(cls, path: Path | str) -> "AppConfig":
@@ -52,6 +55,8 @@ class AppConfig:
             product_types=product_types,
             start_with_windows=bool(data.get("start_with_windows", False)),
             auto_scan_on_launch=bool(data.get("auto_scan_on_launch", False)),
+            schedule_enabled=bool(data.get("schedule_enabled", False)),
+            schedule_time=str(data.get("schedule_time", "09:00")),
         )
 
     def to_dict(self) -> dict:
@@ -66,6 +71,8 @@ class AppConfig:
             "product_types": list(self.product_types),
             "start_with_windows": self.start_with_windows,
             "auto_scan_on_launch": self.auto_scan_on_launch,
+            "schedule_enabled": self.schedule_enabled,
+            "schedule_time": self.schedule_time,
         }
 
     def save(self, path: Path | str) -> None:

@@ -3,11 +3,13 @@ import {
   api,
   fmtPrice,
   WS_URL,
+  type Alert,
   type Config,
   type Deal,
   type Product,
   type ScanStatus,
 } from "./api";
+import { AlertsModal } from "./components/AlertsModal";
 import { FiltersModal } from "./components/FiltersModal";
 import { PriceChartModal } from "./components/PriceChartModal";
 import { ScanBar } from "./components/ScanBar";
@@ -38,8 +40,15 @@ export default function App() {
   const [q, setQ] = useState("");
   const [chart, setChart] = useState<{ url: string; title: string } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  function loadAlerts() {
+    api.alerts().then(setAlerts).catch(() => {});
+  }
 
   async function refresh() {
     try {
@@ -57,6 +66,7 @@ export default function App() {
 
   useEffect(() => {
     refresh();
+    loadAlerts();
     api.config().then(setConfig).catch(() => {});
     api.scanStatus().then(setScan).catch(() => {});
 
@@ -77,9 +87,14 @@ export default function App() {
         case "deal":
           setScan((s) => ({ ...(s ?? emptyStatus()), running: true, deals_found: m.deals_found }));
           break;
+        case "alert":
+          setToast("🔔 Fiyat alarmı tetiklendi!");
+          loadAlerts();
+          break;
         case "finished":
           setScan((s) => ({ ...(s ?? emptyStatus()), running: false, status: "done" }));
           refresh();
+          loadAlerts();
           break;
       }
     };
@@ -100,6 +115,33 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  async function addAlert(r: Deal | Product) {
+    const input = window.prompt(
+      `"${r.brand} — ${r.name}" için hedef fiyat (TL):\nBu fiyatın altına inince alarm tetiklenir.`,
+      String(Math.floor(r.price * 0.9))
+    );
+    if (input == null) return;
+    const target = Number(input.replace(",", "."));
+    if (!target || target <= 0) {
+      setToast("Geçersiz fiyat.");
+      return;
+    }
+    try {
+      await api.addAlert(r.url, target);
+      setToast(`🔔 Alarm kuruldu: ${fmtPrice(target)} TL`);
+      loadAlerts();
+    } catch {
+      setToast("Alarm kurulamadı.");
+    }
+  }
+
+  const triggeredCount = alerts.filter((a) => a.triggered_at != null).length;
   const rows: (Deal | Product)[] = tab === "deals" ? deals : products;
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -117,6 +159,17 @@ export default function App() {
             <h1 className="text-xl font-semibold">Coffee Deal Tracker</h1>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setShowAlerts(true)}
+              className="relative rounded-lg border border-stone-600 px-4 py-2 text-sm hover:bg-stone-800"
+            >
+              🔔 Alarmlar ({alerts.length})
+              {triggeredCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1 text-xs font-bold text-white">
+                  {triggeredCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => setShowFilters(true)}
               className="rounded-lg border border-stone-600 px-4 py-2 text-sm hover:bg-stone-800"
@@ -223,6 +276,13 @@ export default function App() {
                       <td className="px-4 py-2.5">
                         <div className="flex justify-end gap-2">
                           <button
+                            onClick={() => addAlert(r)}
+                            title="Fiyat alarmı kur"
+                            className="rounded-lg border border-stone-300 px-2.5 py-1 text-xs text-stone-700 hover:bg-stone-50"
+                          >
+                            🔔
+                          </button>
+                          <button
                             onClick={() =>
                               setChart({ url: r.url, title: `${r.brand} — ${r.name}` })
                             }
@@ -265,6 +325,13 @@ export default function App() {
           onClose={() => setShowFilters(false)}
           onSaved={(c) => setConfig(c)}
         />
+      )}
+      {showAlerts && <AlertsModal onClose={() => setShowAlerts(false)} />}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-stone-900 px-5 py-3 text-sm text-white shadow-lg">
+          {toast}
+        </div>
       )}
     </div>
   );

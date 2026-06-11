@@ -32,6 +32,15 @@ CREATE TABLE IF NOT EXISTS price_history (
 
 CREATE INDEX IF NOT EXISTS idx_price_history_product_time
     ON price_history(product_url, recorded_at);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_url     TEXT NOT NULL,
+    target_price    REAL NOT NULL,
+    created_at      TIMESTAMP NOT NULL,
+    triggered_at    TIMESTAMP,
+    triggered_price REAL
+);
 """
 
 
@@ -305,6 +314,91 @@ class PriceDatabase:
         with self._cursor() as cur:
             cur.execute("SELECT url, name, brand, site, image_url FROM products ORDER BY name")
             return cur.fetchall()
+
+    # --- fiyat alarmları -----------------------------------------------------
+    def latest_price(self, product_url: str) -> Optional[float]:
+        """Bir ürünün en son kaydedilen fiyatı (yoksa None)."""
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT price FROM price_history
+                WHERE product_url = ?
+                ORDER BY recorded_at DESC LIMIT 1
+                """,
+                (product_url,),
+            )
+            row = cur.fetchone()
+            return float(row[0]) if row and row[0] is not None else None
+
+    def add_alert(self, product_url: str, target_price: float) -> int:
+        """Bir ürün için hedef-fiyat alarmı ekle; alarm id'sini döndürür."""
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO alerts(product_url, target_price, created_at) VALUES (?, ?, ?)",
+                (product_url, float(target_price), datetime.now()),
+            )
+            return int(cur.lastrowid)
+
+    def delete_alert(self, alert_id: int) -> None:
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM alerts WHERE id = ?", (int(alert_id),))
+
+    def list_alerts(self) -> list[dict]:
+        """Tüm alarmlar — ürün adı ve güncel fiyatla birlikte."""
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT a.id, a.product_url, p.name, a.target_price,
+                       a.created_at, a.triggered_at, a.triggered_price
+                FROM alerts a
+                LEFT JOIN products p ON p.url = a.product_url
+                ORDER BY a.created_at DESC
+                """
+            )
+            rows = cur.fetchall()
+        out: list[dict] = []
+        for r in rows:
+            out.append(
+                {
+                    "id": int(r[0]),
+                    "product_url": r[1],
+                    "name": r[2],
+                    "target_price": float(r[3]),
+                    "current_price": self.latest_price(r[1]),
+                    "created_at": r[4].isoformat() if isinstance(r[4], datetime) else r[4],
+                    "triggered_at": r[5].isoformat() if isinstance(r[5], datetime) else r[5],
+                    "triggered_price": float(r[6]) if r[6] is not None else None,
+                }
+            )
+        return out
+
+    def check_alerts(self) -> list[dict]:
+        """Henüz tetiklenmemiş alarmları kontrol et: güncel fiyat hedefin
+        altına/eşiğine indiyse tetiklenmiş işaretle. Yeni tetiklenenleri döndür."""
+        newly: list[dict] = []
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT id, product_url, target_price FROM alerts WHERE triggered_at IS NULL"
+            )
+            pending = cur.fetchall()
+        for alert_id, url, target in pending:
+            current = self.latest_price(url)
+            if current is not None and current <= float(target):
+                now = datetime.now()
+                with self._cursor() as cur:
+                    cur.execute(
+                        "UPDATE alerts SET triggered_at = ?, triggered_price = ? WHERE id = ?",
+                        (now, current, int(alert_id)),
+                    )
+                newly.append(
+                    {
+                        "id": int(alert_id),
+                        "product_url": url,
+                        "target_price": float(target),
+                        "triggered_price": current,
+                    }
+                )
+        return newly
 
     def latest_snapshot(self, hours: int = 48) -> list[tuple[ProductListing, datetime]]:
         """Her URL için son `hours` saat içindeki en yeni fiyat kaydı.

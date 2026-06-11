@@ -19,6 +19,8 @@ export function FiltersModal({ config, onClose, onSaved }: Props) {
     new Set(config.product_types.map((t) => t.toLowerCase()))
   );
   const [days, setDays] = useState(config.history_days);
+  const [scheduleEnabled, setScheduleEnabled] = useState(config.schedule_enabled);
+  const [scheduleTime, setScheduleTime] = useState(config.schedule_time || "09:00");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -49,6 +51,8 @@ export function FiltersModal({ config, onClose, onSaved }: Props) {
         brands: dedup,
         product_types: finalTypes,
         history_days: days,
+        schedule_enabled: scheduleEnabled,
+        schedule_time: scheduleTime,
       });
       onSaved(saved);
       onClose();
@@ -128,6 +132,30 @@ export function FiltersModal({ config, onClose, onSaved }: Props) {
             />
             günün en düşüğünün altı fırsattır.
           </div>
+        </section>
+
+        <section className="mb-5">
+          <h3 className="mb-2 text-sm font-semibold text-amber-700">Zamanlanmış tarama</h3>
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input
+              type="checkbox"
+              className="accent-amber-600"
+              checked={scheduleEnabled}
+              onChange={(e) => setScheduleEnabled(e.target.checked)}
+            />
+            Her gün otomatik tara (sunucu çalışırken)
+          </label>
+          {scheduleEnabled && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-stone-700">
+              Saat:
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="rounded-lg border border-stone-300 px-2 py-1"
+              />
+            </div>
+          )}
         </section>
 
         {err && <p className="mb-3 text-sm text-red-600">{err}</p>}
