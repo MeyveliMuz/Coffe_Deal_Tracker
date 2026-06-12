@@ -149,6 +149,44 @@ export default function App() {
     return rows.filter((r) => `${r.brand} ${r.name} ${r.site}`.toLowerCase().includes(t));
   }, [rows, q]);
 
+  // Sütun sıralama: başlığa tıkla → o sütuna göre artan/azalan
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
+  function toggleSort(key: string) {
+    setSort((s) =>
+      s && s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }
+    );
+  }
+  const sorted = useMemo(() => {
+    if (!sort) return filtered;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const key = sort.key;
+    return [...filtered].sort((a, b) => {
+      const av = (a as any)[key];
+      const bv = (b as any)[key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1; // boş değerler sona
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av).localeCompare(String(bv), "tr") * dir;
+    });
+  }, [filtered, sort]);
+
+  const sortTh = (label: string, key: string, right = false) => (
+    <th
+      onClick={() => toggleSort(key)}
+      className={
+        "cursor-pointer select-none px-4 py-3 font-semibold hover:text-stone-700 " +
+        (right ? "text-right " : "") +
+        (key === "name" ? "min-w-[220px]" : "")
+      }
+    >
+      {label}
+      <span className="ml-1 text-amber-600">
+        {sort?.key === key ? (sort.dir === "asc" ? "▲" : "▼") : ""}
+      </span>
+    </th>
+  );
+
   return (
     <div className="min-h-screen bg-stone-100 text-stone-800">
       {/* Header */}
@@ -230,18 +268,18 @@ export default function App() {
             <table className="w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs uppercase text-stone-500">
                 <tr>
-                  <Th>Marka</Th>
-                  <Th className="min-w-[220px]">Ürün</Th>
-                  <Th>Site</Th>
-                  <Th className="text-right">Fiyat</Th>
-                  {tab === "deals" && <Th className="text-right">İndirimsiz</Th>}
-                  {tab === "deals" && <Th className="text-right">Önceki</Th>}
-                  {tab === "deals" && <Th className="text-right">İndirim</Th>}
+                  {sortTh("Marka", "brand")}
+                  {sortTh("Ürün", "name")}
+                  {sortTh("Site", "site")}
+                  {sortTh("Fiyat", "price", true)}
+                  {tab === "deals" && sortTh("İndirimsiz", "original_price", true)}
+                  {tab === "deals" && sortTh("Önceki", "previous_logged_price", true)}
+                  {tab === "deals" && sortTh("İndirim", "discount_pct", true)}
                   <Th></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {filtered.map((r) => {
+                {sorted.map((r) => {
                   const d = r as Deal;
                   const isDeal = tab === "deals";
                   return (
@@ -303,7 +341,7 @@ export default function App() {
                     </tr>
                   );
                 })}
-                {filtered.length === 0 && (
+                {sorted.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-12 text-center text-stone-400">
                       {q ? "Aramayla eşleşen sonuç yok." : "Henüz veri yok. Bir tarama başlatın."}
