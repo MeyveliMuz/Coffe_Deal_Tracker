@@ -1,10 +1,12 @@
 # Coffee Deal Tracker
 
-Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını (Meinl, Tchibo, Lavazza vb.) tarayıp fırsatları bulan bir Windows masaüstü uygulaması. Hem kendi geçmiş fiyatına göre düşüşleri, hem de site üzerinde gösterilen indirimleri tespit eder.
+Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını (Meinl, Tchibo, Lavazza vb.) tarayıp fırsatları bulan bir uygulama. Hem kendi geçmiş fiyatına göre düşüşleri, hem de site üzerinde gösterilen indirimleri tespit eder.
 
-- **Dil/Framework**: Python 3.11+ · PySide6 · Playwright · SQLite
-- **Bildirim**: Yalnızca uygulama içinde (Windows toast / e-posta / Telegram yok)
-- **Arkaplan**: Yok — pencere kapatıldığında her şey durur
+Tek bir tarama çekirdeğini (`src/core/scan_engine.py`) paylaşan üç istemcisi vardır:
+**masaüstü** (`desktop.py` — web arayüzünü kendi penceresinde gösteren wrapper), **web** (tarayıcı/PWA) ve **API** (FastAPI backend).
+
+- **Dil/Framework**: Python 3.12+ · FastAPI · React + Tailwind · Playwright · SQLite · PySide6 (QtWebEngine wrapper)
+- **Arkaplan**: Backend sürekli çalışabilir (PC'de veya bulutta) → APScheduler ile her gün otomatik tarama + fiyat alarmı takibi.
 
 ## Özellikler
 
@@ -13,7 +15,8 @@ Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını 
   - Site bazlı: Üründe üstü çizili eski fiyat (strikethrough) gösteriliyor mu?
 - **Sonuçlarda arama**: Tablonun üstündeki 🔍 kutuyla marka/ürün/site bazında anlık filtreleme.
 - **Özelleştirilebilir filtreler (⚙ Filtreler)**: Popüler marka listesinden kutucukla seçim + serbest metinle kendi markanı ekleme; ürün türü kategorileri (çekirdek/öğütülmüş/kapsül/filtre/türk/granül — varsayılan yalnızca çekirdek); ayarlanabilir indirim penceresi (varsayılan 90 gün).
-- **Otomatik başlatma**: Windows oturum açılışında başlatma ve/veya o günkü ilk açılışta otomatik tarama (günde en fazla bir kez; ⚙ Filtreler'den açılır).
+- **Zamanlanmış tarama**: Backend (APScheduler) ile her gün belirlenen saatte otomatik tarama — sunucu açıksa pencere açık olmasa bile (⚙ Filtreler'den).
+- **Fiyat alarmı**: Bir ürüne hedef fiyat koy; tarama sonrası fiyat altına inince tetiklenir (opsiyonel e-posta bildirimi).
 - **Fiyat geçmişi grafiği**: Her ürün için 90 günlük çizgi grafik. Node'a hover/tıkla → fiyat + tarih tooltip'i.
 - **Akıllı sütunlar (Fırsatlar)**: Şu anki Fiyat · İndirimsiz Fiyat (site strike) · Önceki Fiyat (son değişim öncesi) · İndirim %.
 - **Sayısal sıralama**: Fiyat / İndirim sütunları gerçek değere göre sıralanır.
@@ -25,34 +28,20 @@ Trendyol, Hepsiburada ve Amazon.com.tr sitelerinde kaliteli kahve markalarını 
 ## Kurulum (geliştirici)
 
 ```powershell
-cd <repo-kökü>
 pip install -r requirements.txt
 python -m playwright install chromium
+npm --prefix frontend install
 ```
 
-Çalıştırma:
+### Masaüstü uygulaması (web arayüzünü kendi penceresinde gösterir)
 
 ```powershell
 .\run.ps1
 ```
 
-veya:
-
-```powershell
-python src/main.py
-```
-
----
-
-## Paketleme (.exe oluşturma)
-
-```powershell
-.\build.ps1
-```
-
-Çıktı: `dist\CoffeeDealTracker\CoffeeDealTracker.exe`
-
-İlk açılışta Playwright Chromium `%LOCALAPPDATA%\ms-playwright` altına indirilir (~150 MB). Sonraki açılışlar hızlıdır.
+`run.ps1` gerekirse frontend'i derler, sonra `desktop.py`'yi çalıştırır: backend
+arka planda başlar ve arayüz QtWebEngine penceresinde açılır (ayrı tarayıcı yok).
+İlk açılışta Playwright Chromium `%LOCALAPPDATA%\ms-playwright` altına indirilir (~150 MB).
 
 ---
 
@@ -173,32 +162,30 @@ Siteler HTML yapılarını değiştirdiğinde ilgili scraper (`src/scrapers/<sit
 
 ```
 coffee-deal-tracker/
-├── config.json              # markalar, siteler, ayarlar
-├── requirements.txt
-├── build.ps1                # PyInstaller paketleme
-├── run.ps1                  # geliştirme çalıştırma
-├── src/
-│   ├── main.py              # giriş noktası (--autoscan argümanını destekler)
-│   ├── ui/
-│   │   ├── main_window.py   # pencere, buton, arama çubuğu, sekmeler
-│   │   ├── deal_table.py    # ürün/fırsat tablosu (arama filtresi + sayısal sıralama)
-│   │   ├── filter_dialog.py # marka/ürün türü/pencere/oto-başlatma ayar penceresi
-│   │   └── price_chart.py   # 90 günlük fiyat geçmişi grafiği
+├── config.json              # markalar, siteler, ayarlar (tek kaynak)
+├── requirements.txt         # masaüstü + backend Python bağımlılıkları
+├── run.ps1                  # masaüstü uygulamasını çalıştır
+├── desktop.py               # MASAÜSTÜ wrapper: backend + QtWebEngine penceresi
+├── docker-compose.yml       # backend + frontend tek komutla
+├── render.yaml              # bulut deploy (Render blueprint)
+├── src/                     # PAYLAŞILAN ÇEKİRDEK (UI yok)
+│   ├── core/
+│   │   ├── scan_engine.py   # framework-bağımsız run_scan() — tarama beyni
+│   │   ├── deal_detector.py # geçmiş (N-gün en düşük) + site indirim mantığı
+│   │   ├── config.py        # AppConfig loader/saver + PRODUCT_TYPES
+│   │   └── models.py        # dataclass'lar
 │   ├── scrapers/
 │   │   ├── base.py          # BaseScraper + ürün türü sınıflandırma
-│   │   ├── trendyol.py
-│   │   ├── hepsiburada.py
-│   │   └── amazon_tr.py
-│   ├── storage/
-│   │   └── db.py            # SQLite wrapper
-│   └── core/
-│       ├── config.py        # AppConfig loader/saver + PRODUCT_TYPES
-│       ├── autostart.py     # Windows başlangıç (registry Run) yönetimi
-│       ├── models.py        # dataclass'lar
-│       ├── scanner.py       # QThread scan worker
-│       └── deal_detector.py # geçmiş (N-gün en düşük) + site indirim mantığı
-└── data/
-    └── price_history.db     # otomatik oluşur
+│   │   ├── trendyol.py · hepsiburada.py · amazon_tr.py
+│   │   └── _template.py     # yeni site eklemek için şablon
+│   └── storage/db.py        # SQLite (ürün, fiyat geçmişi, alarmlar)
+├── backend/                 # FastAPI (REST + WebSocket + APScheduler)
+│   ├── main.py · scan_manager.py · scheduler.py · services.py · notify.py
+│   ├── Dockerfile · tests/
+│   └── schemas.py
+├── frontend/                # React + Vite + Tailwind (PWA)
+│   ├── src/ (App.tsx, api.ts, components/) · Dockerfile · nginx.conf
+└── data/price_history.db    # otomatik oluşur
 ```
 
 ---
