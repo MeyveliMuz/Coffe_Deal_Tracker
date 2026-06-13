@@ -58,6 +58,8 @@ _UA = (
 _INIT_SCRIPT = (
     "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
     "Object.defineProperty(navigator,'languages',{get:()=>['tr-TR','tr','en']});"
+    "Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});"
+    "window.chrome=window.chrome||{runtime:{}};"
 )
 
 
@@ -137,10 +139,23 @@ async def _scan(
     db = PriceDatabase(db_path)
     try:
         async with async_playwright() as pw:
-            log.info("Chromium launching (headless=%s)", config.headless)
+            # Hepsiburada (DataDome/Akamai sınıfı) bot koruması ESKİ headless'i
+            # JS-altı parmak iziyle (TLS/HTTP2, headless bayrağı) yakalıyor — JS
+            # stealth yetmiyor. Chromium'un YENİ headless modu (`--headless=new`)
+            # gerçek başlı tarayıcıya çok yakın ve korumayı geçiyor; pencere de
+            # açmıyor. Bu yüzden `headless=True` istendiğinde launcher'a görünür
+            # (headless=False) deyip args ile yeni headless'i etkinleştiriyoruz.
+            launch_args = ["--disable-blink-features=AutomationControlled"]
+            if config.headless:
+                launch_args.append("--headless=new")
+            log.info(
+                "Chromium launching (headless=%s, mode=%s)",
+                config.headless,
+                "new-headless" if config.headless else "headful",
+            )
             browser = await pw.chromium.launch(
-                headless=config.headless,
-                args=["--disable-blink-features=AutomationControlled"],
+                headless=False,
+                args=launch_args,
             )
             log.info("Chromium launched")
 

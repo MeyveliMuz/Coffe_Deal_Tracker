@@ -34,16 +34,17 @@ Bulut (Oracle A1) denendi ama Frankfurt'ta ücretsiz kapasite çıkmadı; 1GB E2
 - Arayüz boş/404 ise `frontend/dist` eksiktir (gitignore'lu; **git branch değiştirince silinebilir**) → `npm --prefix frontend run build` → backend'i yeniden başlat.
 - Log: `data\backend.log`.
 
-## 4. AÇIK GÖREV (sonraki sohbette ÇÖZ): Hepsiburada'dan veri gelmiyor
-**Belirti:** Tarama sonuçlarında Hepsiburada'dan hiç ürün yok (Trendyol + Amazon geliyor).
-**Olası sebep:** Hepsiburada agresif bot koruması ("Güvenlik doğrulaması" sayfası) — headless Chromium bloklanıyor → `hepsiburada.py` `BotProtectionError` fırlatıp siteyi atlıyor (0 veri). Alternatif: site HTML'i değişti → `wait_for_selector` zaman aşımı → boş `[]` (hata yok ama veri yok).
-**İlk teşhis adımı (next chat):**
-```powershell
-# Tek başına, GÖRÜNÜR tarayıcıyla çalıştır (headful) — ne oluyor gör:
-py -3.14 -m src.scrapers.hepsiburada meinl
-```
-(Bu modülün `__main__` bloğu headful çalışır, bulunan ürünleri yazar; "Güvenlik" sayfası mı, selector mı ayırt edilir.) Ayrıca `data\backend.log`'ta tarama özetinde hepsiburada için "bot koruması" satırına bak.
-**Çözüm seçenekleri:** (a) `playwright-stealth` / daha iyi evasion, (b) gerçek mobil/API uçları, (c) HB'yi "best-effort" kabul edip Trendyol/Amazon'a odaklan. İlgili dosya: `src/scrapers/hepsiburada.py` (warm-up + güvenlik tespiti + selector'lar burada).
+## 4. ÇÖZÜLDÜ (2026-06-14): Hepsiburada'dan veri gelmiyordu
+**Teşhis:** İki ayrı sorun vardı:
+1. **Eski seçiciler.** Headful tarama bot korumasını GEÇİYOR ama 0 ürün dönüyordu → site arama sayfasını yeniden tasarlamış (CSS-module, karmalı sınıf adları). Eski `li.productListContent-item` / `[data-test-id='product-card']` seçicileri artık yok.
+2. **Headless bloklanıyor.** Backend `headless: true` ile çalışıyor; Hepsiburada'nın bot koruması (DataDome/Akamai sınıfı) ESKİ headless Chromium'u JS-altı parmak iziyle yakalıyor → güvenlik sayfası. JS stealth (webdriver/plugins/window.chrome maskeleme) YETMİYOR.
+
+**Çözüm:**
+- `src/scrapers/hepsiburada.py`: yeni sabit tutamaçlarla yeniden yazıldı. Kartlar `<li>` içinde `data-test-id="title-N"` + `final-price-N` (N=1'den artan), üstü çizili fiyat sınıf adında `originalPrice`, link `productCardLink` içerir. Veri tek bir `page.evaluate` ile ham çekilip Python'da filtreleniyor (karmalı sınıf son eklerine bağımlı değil).
+- `src/core/scan_engine.py`: `config.headless=True` iken Chromium artık ESKİ headless yerine **YENİ headless** modunda açılıyor (`launch(headless=False, args=[..., '--headless=new'])`). Yeni headless gerçek başlı tarayıcıya çok yakın, korumayı geçiyor ve pencere açmıyor. `config.headless=False` → gerçek headful (debug).
+- Doğrulama (2026-06-14): uçtan uca tarama (headless=true, sadece hepsiburada, meinl+lavazza) → **10 ürün, 3 fırsat, 0 hata**. `py -3.14 -m pytest backend/tests -q` → 4 passed.
+
+**Tekrar test (headful, tek başına):** `py -3.14 -X utf8 -m src.scrapers.hepsiburada meinl` (UTF-8 bayrağı olmadan Windows konsolu Türkçe karakterde çöker — sadece print sorunu, scraper değil).
 
 ## 5. Faz geçmişi (hepsi master'da, bitti)
 Faz 0 scan_engine ayrımı · 1 FastAPI · 2 React/Tailwind · 3 alarm+zamanlama · 4 Docker+CI · 5 scraper şablonu+deploy artefakt · 6 PWA · 7 masaüstü wrapper · 8 Qt temizliği.

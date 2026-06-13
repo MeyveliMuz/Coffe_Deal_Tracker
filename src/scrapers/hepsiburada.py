@@ -1,6 +1,6 @@
 """Hepsiburada scraper.
 
-Son doğrulama: 2026-04-18
+Son doğrulama: 2026-06-14
 
 ⚠ ÖNEMLİ: Hepsiburada agresif bot koruması uyguluyor ("Güvenlik" sayfası).
 Headless mode genellikle bloklanıyor. Gerçek kullanıcı makinesinde headful
@@ -8,6 +8,13 @@ modda + gerçekçi UA ile bazen geçiyor. Blok tespit edilirse BotProtectionErro
 fırlatılır; uygulama bunu hata olarak raporlar ve diğer sitelerle devam eder.
 
 URL şablonu: https://www.hepsiburada.com/ara?q=<query>
+
+Arama sonuç sayfası CSS-module ile (karmalı sınıf adları) render ediliyor.
+Sabit tutamaçlar: ürün kartları `<li>` içinde `data-test-id="title-N"` ve
+`final-price-N` (N = 1'den artan indeks). Üstü çizili fiyat sınıf adında
+"originalPrice", ürün linki "productCardLink" içerir. Karttan veriyi tek bir
+`page.evaluate` çağrısıyla (ham sözlük) çekip Python tarafında filtreliyoruz —
+karmalı sınıf son eklerine bağımlı kalmamak için.
 """
 from __future__ import annotations
 
@@ -66,15 +73,11 @@ class HepsiburadaScraper(BaseScraper):
                     "config.json'da `headless: false` deneyin."
                 )
 
-            # Ürün kartları için birden fazla olası seçici dene
-            product_sel = (
-                "li.productListContent-item, "
-                "[data-test-id='product-card'], "
-                "li[class*='productCard']"
-            )
-
+            # Ürün kartları yüklendi mi? Kartlar `data-test-id="title-N"` taşır.
             try:
-                await page.wait_for_selector(product_sel, timeout=15000)
+                await page.wait_for_selector(
+                    "[data-test-id^='title-']", timeout=15000
+                )
             except Exception:
                 log.warning("Hepsiburada: sonuç bulunamadı (%s)", query)
                 return []
@@ -82,12 +85,12 @@ class HepsiburadaScraper(BaseScraper):
             await page.evaluate("window.scrollBy(0, 1000)")
             await page.wait_for_timeout(800)
 
-            cards = await page.query_selector_all(product_sel)
+            raw_cards = await self._extract_cards(page)
             results: list[ProductListing] = []
-            for card in cards:
+            for raw in raw_cards:
                 if len(results) >= self.max_products:
                     break
-                listing = await self._parse_card(card, brand)
+                listing = self._build_listing(raw, brand)
                 if listing is None:
                     continue
                 if not self._brand_matches(listing.name, brand):
@@ -101,74 +104,65 @@ class HepsiburadaScraper(BaseScraper):
             await page.close()
             await self._polite_wait()
 
-    async def _parse_card(self, card, brand: str) -> ProductListing | None:
+    async def _extract_cards(self, page: "Page") -> list[dict]:
+        """Sonuç sayfasındaki ürün kartlarından ham veriyi tek seferde çek.
+
+        Sınıf adları CSS-module ile karmalı (ör. `price-module_originalPrice__43Wnd`)
+        olduğundan sabit ekleri (`data-test-id`, sınıf adı parçaları) kullanırız.
+        """
+        return await page.evaluate(
+            """() => {
+                const cards = [...document.querySelectorAll('li')]
+                    .filter(li => li.querySelector('[data-test-id^="title-"]'));
+                return cards.map(card => {
+                    const titleEl = card.querySelector('[data-test-id^="title-"]');
+                    const linkEl =
+                        card.querySelector('a[class*="productCardLink"]') ||
+                        card.querySelector('a[href]');
+                    const priceEl = card.querySelector('[data-test-id^="final-price-"]');
+                    const oldEl = card.querySelector('[class*="originalPrice"]');
+                    const imgEl = card.querySelector('img');
+                    const name = titleEl
+                        ? (titleEl.innerText || titleEl.getAttribute('title') || '').trim()
+                        : '';
+                    return {
+                        name,
+                        href: linkEl ? linkEl.getAttribute('href') : null,
+                        priceText: priceEl ? priceEl.innerText.trim() : '',
+                        oldPriceText: oldEl ? oldEl.innerText.trim() : '',
+                        imageUrl: imgEl
+                            ? (imgEl.getAttribute('src') || imgEl.getAttribute('data-src'))
+                            : null,
+                    };
+                });
+            }"""
+        )
+
+    def _build_listing(self, raw: dict, brand: str) -> ProductListing | None:
         try:
-            # Link (ya <a> içinde ya da <a> kartın kendisi)
-            link_el = await card.query_selector("a[href]")
-            href = await link_el.get_attribute("href") if link_el else None
-            if not href:
+            href = raw.get("href")
+            name = (raw.get("name") or "").strip()
+            if not href or not name:
                 return None
             if href.startswith("/"):
                 href = self.BASE + href
 
-            # İsim — birkaç olası seçici
-            title_el = (
-                await card.query_selector("h3[data-test-id='product-card-name']")
-                or await card.query_selector("h3")
-                or await card.query_selector("[title]")
-            )
-            if title_el is None:
-                return None
-            title = (await title_el.inner_text()).strip()
-            if not title:
-                # Fallback: title attribute
-                t2 = await card.get_attribute("title")
-                if t2:
-                    title = t2.strip()
-            if not title:
-                return None
-
-            # Fiyat
-            price_el = (
-                await card.query_selector("[data-test-id='price-current-price']")
-                or await card.query_selector("div[class*='price']")
-                or await card.query_selector("span[class*='price']")
-            )
-            price_txt = (await price_el.inner_text()).strip() if price_el else ""
-            price = self._parse_price_tr(price_txt)
+            price = self._parse_price_tr(raw.get("priceText", ""))
             if price is None or price <= 0:
                 return None
 
-            # Üstü çizili / önceki fiyat
             original_price: float | None = None
-            old_el = (
-                await card.query_selector("[data-test-id='price-prev-price']")
-                or await card.query_selector("div[class*='prevPrice']")
-                or await card.query_selector("span[class*='prevPrice']")
-                or await card.query_selector("del")
-            )
-            if old_el is not None:
-                old_txt = (await old_el.inner_text()).strip()
-                old_val = self._parse_price_tr(old_txt)
-                if old_val is not None and old_val > price:
-                    original_price = old_val
-
-            # Resim
-            img_el = await card.query_selector("img")
-            image_url = None
-            if img_el:
-                image_url = (
-                    await img_el.get_attribute("src")
-                    or await img_el.get_attribute("data-src")
-                )
+            old_val = self._parse_price_tr(raw.get("oldPriceText", ""))
+            if old_val is not None and old_val > price:
+                original_price = old_val
 
             return ProductListing(
                 url=href.split("?")[0],
-                name=title,
+                name=name,
                 price=price,
                 site=self.site_name,
                 brand=brand.lower(),
-                image_url=image_url,
+                image_url=raw.get("imageUrl"),
                 original_price=original_price,
             )
         except Exception as exc:
