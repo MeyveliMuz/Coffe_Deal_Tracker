@@ -22,6 +22,6 @@
   ],
   "start_with_windows": true,
   "auto_scan_on_launch": true,
-  "schedule_enabled": false,
-  "schedule_time": "09:00"
+  "schedule_enabled": true,
+  "schedule_time": "10:00"
 }
