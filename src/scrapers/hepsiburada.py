@@ -120,7 +120,11 @@ class HepsiburadaScraper(BaseScraper):
                         card.querySelector('a[class*="productCardLink"]') ||
                         card.querySelector('a[href]');
                     const priceEl = card.querySelector('[data-test-id^="final-price-"]');
-                    const oldEl = card.querySelector('[class*="originalPrice"]');
+                    // DİKKAT: iki sınıf eşleşir — `originalPriceArea` (fiyat +
+                    // "%15" indirim rozetini birlikte içerir → parse'ta 735+15=73515
+                    // gibi saçma değer) ve `originalPrice` (yalnız fiyat). `__`
+                    // ayıracı (CSS-module name__hash) sadece doğru olanı seçer.
+                    const oldEl = card.querySelector('[class*="originalPrice__"]');
                     const imgEl = card.querySelector('img');
                     const name = titleEl
                         ? (titleEl.innerText || titleEl.getAttribute('title') || '').trim()

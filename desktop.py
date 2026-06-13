@@ -85,9 +85,28 @@ def main() -> int:
         # QtWebEngine için paylaşılan OpenGL context'i — QApplication'dan ÖNCE
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
-        from PySide6.QtGui import QIcon
+        from PySide6.QtGui import QDesktopServices, QIcon
+        from PySide6.QtWebEngineCore import QWebEnginePage
         from PySide6.QtWebEngineWidgets import QWebEngineView
         from PySide6.QtWidgets import QApplication, QMainWindow
+
+        class _ExternalLinkPage(QWebEnginePage):
+            """`target="_blank"` / window.open linklerini sistem tarayıcısında aç.
+
+            Varsayılan QWebEnginePage `createWindow` için None döndürür → "Aç"
+            gibi yeni-pencere linkleri sessizce çalışmıyordu. Yeni pencere
+            isteğini yakalayıp ilk gidilen URL'i harici tarayıcıya yönlendiririz.
+            """
+
+            def createWindow(self, _type):  # noqa: N802 (Qt API)
+                temp = QWebEnginePage(self)
+
+                def _open(url) -> None:
+                    QDesktopServices.openUrl(url)
+                    temp.deleteLater()
+
+                temp.urlChanged.connect(_open)
+                return temp
 
         app = QApplication(sys.argv)
         app.setApplicationName("Coffee Deal Tracker")
@@ -113,6 +132,7 @@ def main() -> int:
             win.setWindowIcon(QIcon(str(icon_path)))
 
         view = QWebEngineView()
+        view.setPage(_ExternalLinkPage(view))
         view.load(QUrl(URL))
         win.setCentralWidget(view)
         win.show()
