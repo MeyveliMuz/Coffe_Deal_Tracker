@@ -174,3 +174,14 @@ async def ws_scan(ws: WebSocket) -> None:
         manager.disconnect(ws)
     except Exception:
         manager.disconnect(ws)
+
+
+# Derlenmiş frontend'i sun (varsa). EN SONDA mount edilir; "/api/*", "/ws/scan",
+# "/docs" gibi rotalar önce eşleşir. Böylece masaüstü wrapper ve bulut deploy'da
+# tek sunucu hem API'yi hem arayüzü verir (http://localhost:8000 → uygulama).
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _DIST.exists():
+    app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="frontend")
+    log.info("Frontend statik dosyaları sunuluyor: %s", _DIST)

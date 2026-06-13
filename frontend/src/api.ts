@@ -1,7 +1,11 @@
-// Backend API istemcisi + tipler. Tek değişiklik noktası: API_BASE.
-export const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8000";
-export const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws/scan";
+// Backend API istemcisi + tipler.
+// API_BASE boş ("") ise istekler AYNI origin'e gider (backend frontend'i de
+// sunduğunda — masaüstü wrapper ve bulut deploy). Geliştirmede (ayrı Vite
+// sunucusu) .env.development içindeki VITE_API_BASE=http://localhost:8000 kullanılır.
+export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+export const WS_URL = API_BASE
+  ? API_BASE.replace(/^http/, "ws") + "/ws/scan"
+  : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/scan`;
 
 export interface Product {
   url: string;
