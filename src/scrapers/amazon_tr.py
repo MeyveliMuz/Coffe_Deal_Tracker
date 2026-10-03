@@ -1,8 +1,15 @@
 """Amazon.com.tr scraper.
 
-Son doğrulama: 2026-04-18
+Son doğrulama: 2026-10-03
 URL şablonu: https://www.amazon.com.tr/s?k=<query>
 Her ürün kartı `div[data-asin]` öğesidir; ürün URL'i ASIN'den üretilir.
+
+⚠ Amazon (2026) AWS WAF JS challenge kullanıyor: çerezsiz/soğuk oturumla
+doğrudan arama sayfasına giden istek HTTP 503 "Üzgünüz" sayfası alır (CAPTCHA
+değil — eski kontrol bunu "ürün bulunamadı" sanıyordu). Challenge risk
+puanına göre gelir: ana sayfa bazen 200, bazen 202 + JS challenge döner;
+tarayıcı çözünce `aws-waf-token` çerezi set edilir ve sonraki istekler geçer.
+Bu yüzden context başına bir kez ana sayfadan "ısınıyoruz".
 """
 from __future__ import annotations
 
@@ -32,6 +39,33 @@ CAPTCHA_KEYWORDS = [
 class AmazonTrScraper(BaseScraper):
     site_name = "amazon_tr"
     BASE = "https://www.amazon.com.tr"
+    _session_ready = False  # context'te geçerli aws-waf-token var mı
+
+    async def _ensure_session(self, page: "Page") -> None:
+        """Ana sayfadan oturum aç. Amazon challenge'ı risk puanına göre sunar:
+        ilk yanıt 202 ise JS challenge vardır → `aws-waf-token` çerezi gelene
+        kadar bekle; 200 ise challenge yoktur, kısa bekleme yeterli.
+        Context başına bir kez yapılır (çerezler context'te kalır)."""
+        if self._session_ready:
+            return
+        resp = await page.goto(self.BASE + "/", wait_until="domcontentloaded", timeout=45000)
+        if resp is not None and resp.status == 202:
+            for _ in range(30):  # en fazla ~15 sn
+                if any(c["name"] == "aws-waf-token" for c in await self.context.cookies()):
+                    break
+                await page.wait_for_timeout(500)
+            else:
+                log.warning("Amazon: WAF challenge çözülemedi (aws-waf-token yok)")
+        await page.wait_for_timeout(1000)
+        self._session_ready = True
+
+    async def _open_search(self, page: "Page", url: str):
+        await self._ensure_session(page)
+        resp = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        blocked = (resp is not None and resp.status == 503) or (
+            "üzgünüz" in (await page.title()).lower()
+        )
+        return blocked
 
     async def search(self, brand: str) -> list[ProductListing]:
         query = self._build_query(brand)
@@ -39,7 +73,13 @@ class AmazonTrScraper(BaseScraper):
 
         page = await self.context.new_page()
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            if await self._open_search(page, url):
+                # Token süresi dolmuş/geçersiz olabilir — bir kez yeniden ısın
+                self._session_ready = False
+                if await self._open_search(page, url):
+                    raise BotProtectionError(
+                        "Amazon 503 'Üzgünüz' — bot koruması (AWS WAF challenge geçilemedi)"
+                    )
 
             # CAPTCHA kontrolü — title veya içerikte
             title = (await page.title()).lower()
@@ -163,7 +203,7 @@ if __name__ == "__main__":
 
         brand = sys.argv[1] if len(sys.argv) > 1 else "meinl"
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+            browser = await pw.chromium.launch(headless=False, args=["--headless=new"])
             ctx = await browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
