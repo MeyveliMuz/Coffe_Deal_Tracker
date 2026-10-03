@@ -12,6 +12,7 @@ bot koruma toleransı, izole context'ler) tek yerde tutulur.
 from __future__ import annotations
 
 import logging
+import statistics
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -61,6 +62,21 @@ _INIT_SCRIPT = (
     "Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});"
     "window.chrome=window.chrome||{runtime:{}};"
 )
+
+
+# Fiyat aklıselim kontrolü: ürünün yakın geçmişine göre absürt bir değer
+# (ör. site biçim değiştirince 1000 kat küçük okunan fiyat) DB'ye yazılmaz —
+# yazılırsa 90-günlük en düşük fiyatı zehirler ve sahte %99 fırsat üretir.
+_OUTLIER_LOW = 0.2
+_OUTLIER_HIGH = 5.0
+
+
+def _is_price_outlier(price: float, recent: list[float]) -> bool:
+    """Fiyat, son kayıtların medyanının [%20, 5x] aralığı dışındaysa True."""
+    if not recent:
+        return False
+    med = statistics.median(recent)
+    return med > 0 and not (med * _OUTLIER_LOW <= price <= med * _OUTLIER_HIGH)
 
 
 def _safe(cb, *args) -> None:
@@ -233,6 +249,16 @@ async def _scan(
                                 continue
 
                             for listing in listings:
+                                recent = db.recent_prices(listing.url)
+                                if _is_price_outlier(listing.price, recent):
+                                    msg = (
+                                        f"{site_name}/{brand}: şüpheli fiyat atlandı — "
+                                        f"{listing.price:g} (son kayıtların medyanı "
+                                        f"{statistics.median(recent):g}) · {listing.name[:60]}"
+                                    )
+                                    log.warning(msg)
+                                    summary.skipped.append(msg)
+                                    continue
                                 summary.products_found += 1
                                 recorded_at = db.record_listing(listing)
                                 _safe(on_product, listing)

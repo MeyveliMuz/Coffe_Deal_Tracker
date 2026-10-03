@@ -65,25 +65,36 @@ class BaseScraper(ABC):
 
     @staticmethod
     def _parse_price_tr(text: str) -> float | None:
-        """'1.234,56 TL' gibi TR formatlı fiyatı float'a çevir."""
+        """Fiyat metnini float'a çevir — TR ('1.234,56 TL') ve EN ('1,234.56 TL')
+        biçimlerinin ikisini de doğru okur.
+
+        Site hangi biçimi sunacağını değiştirebiliyor: Trendyol 2026-10-02
+        taramasında EN biçimi döndü ve eski "nokta=binlik, virgül=ondalık"
+        varsayımı fiyatları 1000 kat küçülttü (2,279.90 → 2.2799). Kural:
+          - İki ayıraç da varsa SONUNCUSU ondalıktır.
+          - Tek tür ayıraç varsa: birden çok geçiyorsa ya da son ayıraçtan
+            sonra tam 3 hane varsa binliktir (kuruş en fazla 2 hane),
+            aksi halde ondalıktır.
+        """
         if not text:
             return None
         import re
 
-        cleaned = re.sub(r"[^0-9.,]", "", text.strip())
+        cleaned = re.sub(r"[^0-9.,]", "", text.strip()).strip(".,")
         if not cleaned:
             return None
-        # TR format: binlik '.', ondalık ','
-        if "," in cleaned and "." in cleaned:
-            cleaned = cleaned.replace(".", "").replace(",", ".")
-        elif "," in cleaned:
-            cleaned = cleaned.replace(",", ".")
-        else:
-            # Sadece '.' varsa — binlik ayırıcı olabilir (1.234) veya ondalık (1.23)
-            # İki haneli ondalık olasılığı yüksek değil; binlik olarak kaldır
-            parts = cleaned.split(".")
-            if len(parts) > 2 or (len(parts) == 2 and len(parts[1]) == 3):
-                cleaned = cleaned.replace(".", "")
+        last_dot, last_comma = cleaned.rfind("."), cleaned.rfind(",")
+        if last_dot != -1 and last_comma != -1:
+            dec = "." if last_dot > last_comma else ","
+            thousands = "," if dec == "." else "."
+            cleaned = cleaned.replace(thousands, "").replace(dec, ".")
+        elif last_dot != -1 or last_comma != -1:
+            sep = "." if last_dot != -1 else ","
+            tail = cleaned.rsplit(sep, 1)[1]
+            if cleaned.count(sep) > 1 or len(tail) == 3:
+                cleaned = cleaned.replace(sep, "")
+            else:
+                cleaned = cleaned.replace(sep, ".")
         try:
             return float(cleaned)
         except ValueError:

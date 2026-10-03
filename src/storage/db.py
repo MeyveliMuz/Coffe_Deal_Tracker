@@ -169,6 +169,16 @@ class PriceDatabase:
         return now
 
     # --- reads ---------------------------------------------------------------
+    def recent_prices(self, product_url: str, limit: int = 10) -> list[float]:
+        """Ürünün en yeni `limit` fiyat kaydı (yeniden eskiye)."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT price FROM price_history WHERE product_url = ? "
+                "ORDER BY recorded_at DESC LIMIT ?",
+                (product_url, int(limit)),
+            )
+            return [r[0] for r in cur.fetchall() if r[0] is not None]
+
     def min_price_since(self, product_url: str, window_days: int) -> Optional[float]:
         """Verilen pencere içindeki en düşük fiyat. Kayıt yoksa None."""
         with self._cursor() as cur:
