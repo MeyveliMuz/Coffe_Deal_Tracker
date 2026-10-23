@@ -28,6 +28,13 @@ class Deal:
     discount_pct: Optional[float] = None  # ilgili indirim yüzdesi (geçmiş veya site bazlı)
     original_price: Optional[float] = None  # site kartındaki üstü çizili eski fiyat (varsa)
     previous_logged_price: Optional[float] = None  # en son önceki tarama fiyatı (kalıcı değişim için)
+    # Referans fiyat doğrulaması (bkz. deal_detector):
+    verdict: str = "verified"  # verified | unverified | fake
+    claimed_pct: Optional[float] = None   # sitenin üstü çizili fiyata göre iddia ettiği indirim
+    ref_low_30d: Optional[float] = None   # önceki 30 günün en düşük fiyatı (yasal referans)
+    badge_seen: Optional[str] = None      # üstü çizili fiyatın görüldüğü tarama sayısı, ör. "0/34"
+    spikes: int = 0                       # son 60 günde kısa süreli (≤2 tarama) fiyat sıçraması
+    reason: str = ""                      # kullanıcıya gösterilecek açıklama
 
     @property
     def is_new_low(self) -> bool:

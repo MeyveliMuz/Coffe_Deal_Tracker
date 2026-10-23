@@ -133,6 +133,23 @@ def main() -> int:
 
         view = QWebEngineView()
         view.setPage(_ExternalLinkPage(view))
+
+        # QtWebEngine indirmeleri varsayılan olarak yok sayar → "Dışa aktar"
+        # dosyalarını Downloads'a kaydet, bitince klasörü göster.
+        downloads = Path.home() / "Downloads"
+
+        def _on_download(req) -> None:
+            req.setDownloadDirectory(str(downloads))
+            req.accept()
+
+            def _done() -> None:
+                if req.isFinished():
+                    _log(f"İndirildi: {downloads / req.downloadFileName()}")
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(downloads)))
+
+            req.isFinishedChanged.connect(_done)
+
+        view.page().profile().downloadRequested.connect(_on_download)
         view.load(QUrl(URL))
         win.setCentralWidget(view)
         win.show()

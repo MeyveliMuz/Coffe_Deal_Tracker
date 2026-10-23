@@ -32,6 +32,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
+        // API/indirme (ör. /api/export) ve Swagger istekleri SPA'ya düşmesin
+        navigateFallbackDenylist: [/^\/api\//, /^\/ws\//, /^\/docs/, /^\/openapi\.json/],
       },
     }),
   ],

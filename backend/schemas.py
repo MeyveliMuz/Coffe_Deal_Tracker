@@ -30,6 +30,12 @@ class DealOut(ProductOut):
     original_price: Optional[float] = None
     previous_logged_price: Optional[float] = None
     history_points: int = 0
+    verdict: str = "verified"
+    claimed_pct: Optional[float] = None
+    ref_low_30d: Optional[float] = None
+    badge_seen: Optional[str] = None
+    spikes: int = 0
+    reason: str = ""
 
 
 class HistoryPoint(BaseModel):
@@ -103,6 +109,12 @@ def deal_to_dict(d: Deal) -> dict:
             "original_price": d.original_price,
             "previous_logged_price": d.previous_logged_price,
             "history_points": d.history_points,
+            "verdict": d.verdict,
+            "claimed_pct": d.claimed_pct,
+            "ref_low_30d": d.ref_low_30d,
+            "badge_seen": d.badge_seen,
+            "spikes": d.spikes,
+            "reason": d.reason,
         }
     )
     return base

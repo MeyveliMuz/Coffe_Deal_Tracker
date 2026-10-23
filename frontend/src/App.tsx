@@ -10,11 +10,12 @@ import {
   type ScanStatus,
 } from "./api";
 import { AlertsModal } from "./components/AlertsModal";
+import { ExportModal } from "./components/ExportModal";
 import { FiltersModal } from "./components/FiltersModal";
 import { PriceChartModal } from "./components/PriceChartModal";
 import { ScanBar } from "./components/ScanBar";
 
-type Tab = "deals" | "all";
+type Tab = "deals" | "fake" | "all";
 
 function emptyStatus(): ScanStatus {
   return {
@@ -38,9 +39,16 @@ export default function App() {
   const [scan, setScan] = useState<ScanStatus | null>(null);
   const [tab, setTab] = useState<Tab>("deals");
   const [q, setQ] = useState("");
-  const [chart, setChart] = useState<{ url: string; title: string } | null>(null);
+  const [chart, setChart] = useState<{
+    url: string;
+    title: string;
+    strike?: number | null;
+    low30?: number | null;
+    reason?: string;
+  } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +150,10 @@ export default function App() {
   }
 
   const triggeredCount = alerts.filter((a) => a.triggered_at != null).length;
-  const rows: (Deal | Product)[] = tab === "deals" ? deals : products;
+  // Sahte indirim elemesi: backend her etiketli ürüne verdict koyar
+  const realDeals = useMemo(() => deals.filter((d) => d.verdict !== "fake"), [deals]);
+  const fakeDeals = useMemo(() => deals.filter((d) => d.verdict === "fake"), [deals]);
+  const rows: (Deal | Product)[] = tab === "deals" ? realDeals : tab === "fake" ? fakeDeals : products;
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return rows;
@@ -209,6 +220,12 @@ export default function App() {
               )}
             </button>
             <button
+              onClick={() => setShowExport(true)}
+              className="rounded-lg border border-stone-600 px-4 py-2 text-sm hover:bg-stone-800"
+            >
+              ⬇ Dışa aktar
+            </button>
+            <button
               onClick={() => setShowFilters(true)}
               className="rounded-lg border border-stone-600 px-4 py-2 text-sm hover:bg-stone-800"
             >
@@ -248,7 +265,10 @@ export default function App() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex rounded-xl bg-stone-200 p-1">
             <TabButton active={tab === "deals"} onClick={() => setTab("deals")}>
-              Fırsatlar ({deals.length})
+              Fırsatlar ({realDeals.length})
+            </TabButton>
+            <TabButton active={tab === "fake"} onClick={() => setTab("fake")}>
+              Sahte indirimler ({fakeDeals.length})
             </TabButton>
             <TabButton active={tab === "all"} onClick={() => setTab("all")}>
               Tüm Ürünler ({products.length})
@@ -272,20 +292,31 @@ export default function App() {
                   {sortTh("Ürün", "name")}
                   {sortTh("Site", "site")}
                   {sortTh("Fiyat", "price", true)}
-                  {tab === "deals" && sortTh("İndirimsiz", "original_price", true)}
-                  {tab === "deals" && sortTh("Önceki", "previous_logged_price", true)}
-                  {tab === "deals" && sortTh("İndirim", "discount_pct", true)}
+                  {tab !== "all" && sortTh("Üstü çizili", "original_price", true)}
+                  {tab !== "all" && sortTh("30 gün en düşük", "ref_low_30d", true)}
+                  {tab === "deals" && sortTh("Gerçek indirim", "discount_pct", true)}
+                  {tab === "fake" && sortTh("Sayfa diyor", "claimed_pct", true)}
                   <Th></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {sorted.map((r) => {
                   const d = r as Deal;
-                  const isDeal = tab === "deals";
+                  const isDeal = tab !== "all";
                   return (
                     <tr key={r.url} className="hover:bg-amber-50/40">
                       <td className="px-4 py-2.5 font-medium capitalize">{r.brand}</td>
-                      <td className="px-4 py-2.5 text-stone-700">{r.name}</td>
+                      <td className="px-4 py-2.5 text-stone-700">
+                        {r.name}
+                        {isDeal && d.verdict === "unverified" && (
+                          <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">doğrulanmadı</span>
+                        )}
+                        {isDeal && (d.verdict !== "verified" || d.reason.includes("abartılı")) && (
+                          <div className={"mt-0.5 text-xs " + (d.verdict === "fake" ? "text-red-600" : "text-stone-500")}>
+                            {d.reason}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 capitalize text-stone-500">{r.site}</td>
                       <td className="px-4 py-2.5 text-right font-medium tabular-nums">
                         {fmtPrice(r.price)} {r.currency}
@@ -297,10 +328,18 @@ export default function App() {
                       )}
                       {isDeal && (
                         <td className="px-4 py-2.5 text-right tabular-nums text-stone-500">
-                          {d.previous_logged_price != null ? fmtPrice(d.previous_logged_price) : "—"}
+                          {d.ref_low_30d != null ? fmtPrice(d.ref_low_30d) : "—"}
                         </td>
                       )}
-                      {isDeal && (
+                      {tab === "fake" && (
+                        <td className="px-4 py-2.5 text-right">
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 line-through">
+                            %{(d.claimed_pct ?? 0).toFixed(0)}
+                          </span>
+                          <div className="mt-0.5 text-xs text-stone-500">gerçek %0</div>
+                        </td>
+                      )}
+                      {tab === "deals" && (
                         <td className="px-4 py-2.5 text-right">
                           {d.discount_pct != null ? (
                             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
@@ -322,7 +361,15 @@ export default function App() {
                           </button>
                           <button
                             onClick={() =>
-                              setChart({ url: r.url, title: `${r.brand} — ${r.name}` })
+                              setChart({
+                                url: r.url,
+                                title: `${r.brand} — ${r.name}`,
+                                ...(isDeal && {
+                                  strike: d.original_price,
+                                  low30: d.ref_low_30d,
+                                  reason: d.reason,
+                                }),
+                              })
                             }
                             className="rounded-lg border border-stone-300 px-2.5 py-1 text-xs text-stone-700 hover:bg-stone-50"
                           >
@@ -355,7 +402,14 @@ export default function App() {
       </main>
 
       {chart && (
-        <PriceChartModal url={chart.url} title={chart.title} onClose={() => setChart(null)} />
+        <PriceChartModal
+          url={chart.url}
+          title={chart.title}
+          strike={chart.strike}
+          low30={chart.low30}
+          reason={chart.reason}
+          onClose={() => setChart(null)}
+        />
       )}
       {showFilters && config && (
         <FiltersModal
@@ -365,6 +419,7 @@ export default function App() {
         />
       )}
       {showAlerts && <AlertsModal onClose={() => setShowAlerts(false)} />}
+      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-stone-900 px-5 py-3 text-sm text-white shadow-lg">

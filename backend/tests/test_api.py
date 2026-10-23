@@ -37,3 +37,14 @@ def test_alert_crud():
         ids = [a["id"] for a in c.get("/api/alerts").json()]
         assert created["id"] in ids
         assert c.delete(f"/api/alerts/{created['id']}").status_code == 204
+
+
+def test_export_formats():
+    with TestClient(app) as c:
+        for fmt, ctype in [("csv", "text/csv"), ("json", "application/json"),
+                           ("xlsx", "spreadsheetml")]:
+            r = c.get(f"/api/export?dataset=history&format={fmt}&days=30")
+            assert r.status_code == 200 and ctype in r.headers["content-type"]
+            assert "attachment" in r.headers["content-disposition"]
+        assert c.get("/api/export?dataset=all&format=csv").headers["content-type"] == "application/zip"
+        assert c.get("/api/export?dataset=nope").status_code == 400

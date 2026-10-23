@@ -1,6 +1,7 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 apscheduler>=3.10
+openpyxl>=3.1            # dışa aktarma (xlsx)
 playwright>=1.45
 # NOT: PySide6 backend için GEREKLİ DEĞİL — yalnızca masaüstü (Qt) istemcisi kullanır.
 # Container'da tarayıcı: `playwright install --with-deps chromium` (bkz. backend/Dockerfile).

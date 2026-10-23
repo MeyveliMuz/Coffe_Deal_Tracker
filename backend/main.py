@@ -15,12 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import AppConfig
 
-from . import scheduler, services
+from . import export, scheduler, services
 from .scan_manager import manager
 from .schemas import (
     AlertIn,
@@ -113,6 +113,22 @@ def get_deals() -> list[dict]:
 def get_history(url: str, window_days: int = 90) -> list[dict]:
     points = services.price_history(url, window_days=window_days)
     return [{"t": t, "price": p} for t, p in points]
+
+
+@app.get("/api/export")
+def export_data(dataset: str = "history", format: str = "csv", days: int = 0) -> Response:
+    """Veri analizi için dışa aktarma. dataset: history|products|deals|all,
+    format: csv|xlsx|json, days: son N gün (0 = tümü)."""
+    if dataset not in export.DATASETS:
+        raise HTTPException(400, f"dataset şunlardan biri olmalı: {', '.join(export.DATASETS)}")
+    if format not in export.FORMATS:
+        raise HTTPException(400, f"format şunlardan biri olmalı: {', '.join(export.FORMATS)}")
+    data, media_type, filename = export.build(dataset, format, days or None)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/alerts", response_model=list[AlertOut])

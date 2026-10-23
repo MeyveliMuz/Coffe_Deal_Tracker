@@ -179,6 +179,23 @@ class PriceDatabase:
             )
             return [r[0] for r in cur.fetchall() if r[0] is not None]
 
+    def prices_before(
+        self, product_url: str, window_days: int, *, before: Optional[datetime] = None
+    ) -> list[float]:
+        """`before`'dan önceki son `window_days` gündeki fiyatlar (eskiden yeniye)."""
+        sql = (
+            "SELECT price FROM price_history WHERE product_url = ? "
+            f"AND recorded_at >= datetime('now', '-{int(window_days)} days')"
+        )
+        params: list = [product_url]
+        if before is not None:
+            sql += " AND recorded_at < ?"
+            params.append(before)
+        sql += " ORDER BY recorded_at ASC"
+        with self._cursor() as cur:
+            cur.execute(sql, params)
+            return [r[0] for r in cur.fetchall() if r[0] is not None]
+
     def min_price_since(self, product_url: str, window_days: int) -> Optional[float]:
         """Verilen pencere içindeki en düşük fiyat. Kayıt yoksa None."""
         with self._cursor() as cur:

@@ -23,6 +23,12 @@ export interface Deal extends Product {
   original_price: number | null;
   previous_logged_price: number | null;
   history_points: number;
+  verdict: "verified" | "unverified" | "fake";
+  claimed_pct: number | null;
+  ref_low_30d: number | null;
+  badge_seen: string | null;
+  spikes: number;
+  reason: string;
 }
 
 export interface Config {
@@ -136,3 +142,11 @@ export const POPULAR_BRANDS: [string, string][] = [
   ["espressolab", "Espressolab"],
   ["whirl", "Whirl"],
 ];
+
+export type ExportDataset = "history" | "products" | "deals" | "all";
+export type ExportFormat = "xlsx" | "csv" | "json";
+
+export function exportUrl(dataset: ExportDataset, format: ExportFormat, days: number): string {
+  const q = new URLSearchParams({ dataset, format, days: String(days) });
+  return `${API_BASE}/api/export?${q}`;
+}

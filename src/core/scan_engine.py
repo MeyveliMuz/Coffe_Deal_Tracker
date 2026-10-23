@@ -269,7 +269,7 @@ async def _scan(
                                     window_days=config.history_days,
                                     recorded_at=recorded_at,
                                 )
-                                if deal is not None:
+                                if deal is not None and deal.verdict != "fake":
                                     summary.deals_found += 1
                                     _safe(on_deal, deal)
                     finally:
