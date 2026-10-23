@@ -15,7 +15,20 @@ export interface Product {
   price: number;
   currency: string;
   image_url: string | null;
+  weight_g: number | null;
+  weight_label: string | null;
+  price_per_kg: number | null;
 }
+
+/** Gramaj filtresi kovaları (toplam net ağırlığa göre) */
+export const WEIGHT_BUCKETS: { id: string; label: string; test: (g: number | null) => boolean }[] = [
+  { id: "all", label: "Tümü", test: () => true },
+  { id: "250", label: "≤250 g", test: (g) => g != null && g <= 300 },
+  { id: "500", label: "500 g", test: (g) => g != null && g > 300 && g <= 700 },
+  { id: "1000", label: "1 kg", test: (g) => g != null && g > 700 && g <= 1300 },
+  { id: "2000", label: "2 kg+", test: (g) => g != null && g > 1300 },
+  { id: "none", label: "Bilinmiyor", test: (g) => g == null },
+];
 
 export interface Deal extends Product {
   historical_min: number | null;

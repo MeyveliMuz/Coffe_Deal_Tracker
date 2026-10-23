@@ -11,6 +11,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from src.core.weight import parse_weight
+
 from src.core.models import Deal, ProductListing, ScanSummary
 
 
@@ -22,6 +24,9 @@ class ProductOut(BaseModel):
     price: float
     currency: str = "TRY"
     image_url: Optional[str] = None
+    weight_g: Optional[int] = None       # toplam net gramaj (paket × adet)
+    weight_label: Optional[str] = None   # ör. "2 × 250 g"
+    price_per_kg: Optional[float] = None
 
 
 class DealOut(ProductOut):
@@ -89,6 +94,7 @@ class ScanStatus(BaseModel):
 
 # ---- dönüştürücüler -------------------------------------------------------
 def product_to_dict(l: ProductListing) -> dict:
+    w = parse_weight(l.name)
     return {
         "url": l.url,
         "name": l.name,
@@ -97,6 +103,9 @@ def product_to_dict(l: ProductListing) -> dict:
         "price": l.price,
         "currency": l.currency,
         "image_url": l.image_url,
+        "weight_g": w["total_g"] if w else None,
+        "weight_label": w["label"] if w else None,
+        "price_per_kg": round(l.price / w["total_g"] * 1000, 2) if w else None,
     }
 
 

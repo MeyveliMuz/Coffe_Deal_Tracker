@@ -8,6 +8,7 @@ import {
   type Deal,
   type Product,
   type ScanStatus,
+  WEIGHT_BUCKETS,
 } from "./api";
 import { AlertsModal } from "./components/AlertsModal";
 import { ExportModal } from "./components/ExportModal";
@@ -39,6 +40,7 @@ export default function App() {
   const [scan, setScan] = useState<ScanStatus | null>(null);
   const [tab, setTab] = useState<Tab>("deals");
   const [q, setQ] = useState("");
+  const [weight, setWeight] = useState("all");
   const [chart, setChart] = useState<{
     url: string;
     title: string;
@@ -154,11 +156,16 @@ export default function App() {
   const realDeals = useMemo(() => deals.filter((d) => d.verdict !== "fake"), [deals]);
   const fakeDeals = useMemo(() => deals.filter((d) => d.verdict === "fake"), [deals]);
   const rows: (Deal | Product)[] = tab === "deals" ? realDeals : tab === "fake" ? fakeDeals : products;
-  const filtered = useMemo(() => {
+  // Metin araması sonrası gramaj kovası; kova sayıları aramaya göre hesaplanır
+  const searched = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return rows;
     return rows.filter((r) => `${r.brand} ${r.name} ${r.site}`.toLowerCase().includes(t));
   }, [rows, q]);
+  const filtered = useMemo(() => {
+    const b = WEIGHT_BUCKETS.find((x) => x.id === weight) ?? WEIGHT_BUCKETS[0];
+    return searched.filter((r) => b.test(r.weight_g));
+  }, [searched, weight]);
 
   // Sütun sıralama: başlığa tıkla → o sütuna göre artan/azalan
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
@@ -282,6 +289,30 @@ export default function App() {
           />
         </div>
 
+        {/* Gramaj filtresi */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="mr-1 text-stone-500">Gramaj:</span>
+          {WEIGHT_BUCKETS.map((b) => {
+            const n = searched.filter((r) => b.test(r.weight_g)).length;
+            const active = weight === b.id;
+            return (
+              <button
+                key={b.id}
+                onClick={() => setWeight(b.id)}
+                disabled={n === 0 && !active}
+                className={
+                  "rounded-full border px-3 py-1 " +
+                  (active
+                    ? "border-amber-500 bg-amber-500 font-medium text-stone-900"
+                    : "border-stone-300 bg-white text-stone-600 hover:bg-stone-50 disabled:opacity-40")
+                }
+              >
+                {b.label} <span className={active ? "text-stone-800" : "text-stone-400"}>({n})</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Tablo */}
         <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
@@ -291,6 +322,7 @@ export default function App() {
                   {sortTh("Marka", "brand")}
                   {sortTh("Ürün", "name")}
                   {sortTh("Site", "site")}
+                  {sortTh("Gramaj", "weight_g", true)}
                   {sortTh("Fiyat", "price", true)}
                   {tab !== "all" && sortTh("Üstü çizili", "original_price", true)}
                   {tab !== "all" && sortTh("30 gün en düşük", "ref_low_30d", true)}
@@ -318,8 +350,14 @@ export default function App() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 capitalize text-stone-500">{r.site}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-stone-600">
+                        {r.weight_label ?? "—"}
+                      </td>
                       <td className="px-4 py-2.5 text-right font-medium tabular-nums">
                         {fmtPrice(r.price)} {r.currency}
+                        {r.price_per_kg != null && (
+                          <div className="text-xs font-normal text-stone-400">{fmtPrice(r.price_per_kg)} / kg</div>
+                        )}
                       </td>
                       {isDeal && (
                         <td className="px-4 py-2.5 text-right tabular-nums text-stone-500">
@@ -390,7 +428,7 @@ export default function App() {
                 })}
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-stone-400">
+                    <td colSpan={9} className="px-4 py-12 text-center text-stone-400">
                       {q ? "Aramayla eşleşen sonuç yok." : "Henüz veri yok. Bir tarama başlatın."}
                     </td>
                   </tr>

@@ -21,6 +21,7 @@ import zipfile
 from datetime import datetime
 from typing import Optional
 
+from src.core.weight import parse_weight
 from src.scrapers.base import BaseScraper
 from src.storage.db import PriceDatabase
 
@@ -64,6 +65,7 @@ def history_rows(days: Optional[int] = None) -> list[dict]:
     out = []
     for rec, site, brand, name, url, price, orig, cur in rows:
         page_disc = round((1 - price / orig) * 100, 2) if orig and orig > price else None
+        w = parse_weight(name)
         out.append({
             "recorded_at": str(rec)[:19],
             "scan_date": str(rec)[:10],
@@ -74,6 +76,8 @@ def history_rows(days: Optional[int] = None) -> list[dict]:
             "price": price,
             "original_price": orig,
             "page_discount_pct": page_disc,
+            "weight_g": w["total_g"] if w else None,
+            "price_per_kg": round(price / w["total_g"] * 1000, 2) if w else None,
             "currency": cur,
             "url": url,
         })
@@ -96,6 +100,7 @@ def product_rows(days: Optional[int] = None) -> list[dict]:
         rows = c.execute(sql, params).fetchall()
     out = []
     for url, site, brand, name, first, last, n, mn, mx, avg, latest in rows:
+        w = parse_weight(name)
         out.append({
             "site": site,
             "brand": brand,
@@ -103,6 +108,8 @@ def product_rows(days: Optional[int] = None) -> list[dict]:
             "name": name,
             "first_seen": str(first)[:19],
             "last_seen": str(last)[:19],
+            "weight_g": w["total_g"] if w else None,
+            "weight_label": w["label"] if w else None,
             "records": n,
             "latest_price": latest,
             "min_price": mn,
@@ -116,7 +123,8 @@ def product_rows(days: Optional[int] = None) -> list[dict]:
 
 def deal_rows() -> list[dict]:
     _, deals = services.snapshot(services.load_config())
-    keys = ["verdict", "site", "brand", "name", "price", "original_price", "claimed_pct",
+    keys = ["verdict", "site", "brand", "name", "weight_g", "price_per_kg", "price",
+            "original_price", "claimed_pct",
             "ref_low_30d", "discount_pct", "badge_seen", "spikes", "historical_min",
             "previous_logged_price", "history_points", "reason", "currency", "url"]
     return [{k: deal_to_dict(d).get(k) for k in keys} for d in deals]
