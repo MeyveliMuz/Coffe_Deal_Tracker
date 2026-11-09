@@ -44,3 +44,16 @@ def test_price_outlier_guard():
     assert _is_price_outlier(2.3999, history)       # 1000 kat küçük okunmuş
     assert not _is_price_outlier(2099.9, history)   # gerçek indirim
     assert not _is_price_outlier(5.0, [])           # geçmiş yoksa karar verilmez
+
+
+def test_trendyol_build_listing_from_raw_card():
+    # Kart tek seferde (atomik) okunur; ad ve fiyat aynı ham kayıttan gelir
+    s = TrendyolScraper(None)
+    raw = {"href": "/julius-meinl/cekirdek-kahve-tadim-paketi-1kg-p-57720322?boutiqueId=1",
+           "brand": "Julius Meinl", "name": "Çekirdek Kahve Tadım Paketi 1kg", "alt": "",
+           "discounted": "1.580 TL\n1.599 TL", "strike": "1.599 TL", "single": "", "section": "",
+           "image": None}
+    l = s._build_listing(raw, "meinl")
+    assert (l.price, l.original_price) == (1580.0, 1599.0)
+    assert l.url == "https://www.trendyol.com/julius-meinl/cekirdek-kahve-tadim-paketi-1kg-p-57720322"
+    assert s._build_listing({**raw, "href": None}, "meinl") is None

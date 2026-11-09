@@ -1,6 +1,6 @@
 """Trendyol scraper.
 
-Son doğrulama: 2026-04-18
+Son doğrulama: 2026-11-09
 URL şablonu: https://www.trendyol.com/sr?q=<query>
 Selector kırılırsa bu dosyanın üstündeki tarihi güncelleyin.
 """
@@ -47,18 +47,20 @@ class TrendyolScraper(BaseScraper):
             await page.evaluate("window.scrollBy(0, 1200)")
             await page.wait_for_timeout(800)
 
-            cards = await page.query_selector_all(".product-card")
+            raw_cards = await self._extract_cards(page)
             results: list[ProductListing] = []
-            for card in cards:
+            seen: set[str] = set()
+            for raw in raw_cards:
                 if len(results) >= self.max_products:
                     break
-                listing = await self._parse_card(card, brand)
-                if listing is None:
+                listing = self._build_listing(raw, brand)
+                if listing is None or listing.url in seen:
                     continue
                 if not self._brand_matches(listing.name, brand):
                     continue
                 if not self._product_allowed(listing.name):
                     continue
+                seen.add(listing.url)
                 results.append(listing)
 
             return results
@@ -83,88 +85,72 @@ class TrendyolScraper(BaseScraper):
             except Exception:
                 pass
 
-    async def _parse_card(self, card, brand: str) -> ProductListing | None:
-        try:
-            # Kart <a> elementinin kendisi; href doğrudan burada
-            href = await card.get_attribute("href")
-            if not href:
-                return None
-            if href.startswith("/"):
-                href = self.BASE + href
+    async def _extract_cards(self, page: "Page") -> list[dict]:
+        """Tüm kartların ham verisini TEK tarayıcı çağrısında (atomik) oku.
 
-            # Ad: marka + ürün adı iki ayrı span
-            brand_el = await card.query_selector(".product-brand")
-            name_el = await card.query_selector(".product-name")
-            brand_txt = (await brand_el.inner_text()).strip() if brand_el else ""
-            name_txt = (await name_el.inner_text()).strip() if name_el else ""
-            full_name = f"{brand_txt} {name_txt}".strip()
+        Eskiden her alan ayrı bir await ile okunuyordu (href → ad → fiyat).
+        Trendyol listeyi o arada yeniden çizerse (lazy-load / reklam kartı)
+        aynı DOM düğümü başka ürünü gösteriyor, ad bir üründen fiyat komşusundan
+        geliyordu (2026-11-09: 1.580 TL'lik 1 kg paket, yanındaki 500 g'lık
+        ürünün 783,02 TL fiyatıyla kaydedildi → sahte %50 indirim).
+        """
+        return await page.evaluate(
+            """() => [...document.querySelectorAll('.product-card')].map(c => {
+                const t = s => { const e = c.querySelector(s); return e ? e.innerText.trim() : ''; };
+                const img = c.querySelector("img[data-testid='image-img'], img");
+                return {
+                    href: c.getAttribute('href'),
+                    brand: t('.product-brand'),
+                    name: t('.product-name'),
+                    alt: img ? (img.getAttribute('alt') || '') : '',
+                    discounted: t('.discounted-price, .sale-price'),
+                    strike: t('.strikethrough-price'),
+                    single: t('.single-price'),
+                    section: t('.price-section'),
+                    image: img ? (img.getAttribute('src') || img.getAttribute('data-src')) : null,
+                };
+            })"""
+        )
 
-            if not full_name:
-                # Fallback: resmin alt attribute'u genellikle tam adı içerir
-                img_el = await card.query_selector("img[data-testid='image-img']")
-                if img_el:
-                    alt = await img_el.get_attribute("alt")
-                    if alt:
-                        full_name = alt.strip()
-            if not full_name:
-                return None
-
-            # Fiyat — .single-price indirimsiz tek fiyat; indirimli varyantlarda
-            # .discounted-price aktif fiyat, .strikethrough-price üstü çizili
-            # eski fiyat. Önce her ikisini ayrı ayrı yakalamayı dene; olmazsa
-            # eski fallback'e (price-section bütünü) düş.
-            discounted_el = await card.query_selector(".discounted-price, .sale-price")
-            strikethrough_el = await card.query_selector(".strikethrough-price")
-            single_el = await card.query_selector(".single-price")
-
-            price: float | None = None
-            original_price: float | None = None
-
-            if discounted_el is not None:
-                price = self._pick_lowest_price(
-                    (await discounted_el.inner_text()).strip()
-                )
-                if strikethrough_el is not None:
-                    original_price = self._pick_lowest_price(
-                        (await strikethrough_el.inner_text()).strip()
-                    )
-            elif single_el is not None:
-                price = self._pick_lowest_price(
-                    (await single_el.inner_text()).strip()
-                )
-            else:
-                section_el = await card.query_selector(".price-section")
-                price_txt = (await section_el.inner_text()).strip() if section_el else ""
-                price = self._pick_lowest_price(price_txt)
-
-            if price is None or price <= 0:
-                return None
-            # Mantık kontrolü: eski fiyat yeni fiyattan düşükse veya eşitse
-            # gerçek bir indirim yok demektir, temizle.
-            if original_price is not None and original_price <= price:
-                original_price = None
-
-            # Resim
-            img_el = await card.query_selector("img[data-testid='image-img'], img")
-            image_url = None
-            if img_el:
-                image_url = (
-                    await img_el.get_attribute("src")
-                    or await img_el.get_attribute("data-src")
-                )
-
-            return ProductListing(
-                url=href.split("?")[0],  # query param'ları temizle
-                name=full_name,
-                price=price,
-                site=self.site_name,
-                brand=brand.lower(),
-                image_url=image_url,
-                original_price=original_price,
-            )
-        except Exception as exc:
-            log.debug("Trendyol kart parse hatası: %s", exc)
+    def _build_listing(self, raw: dict, brand: str) -> ProductListing | None:
+        href = raw.get("href")
+        if not href:
             return None
+        if href.startswith("/"):
+            href = self.BASE + href
+
+        # Ad: marka + ürün adı iki ayrı span; yoksa resmin alt metni
+        full_name = f"{raw.get('brand', '')} {raw.get('name', '')}".strip() or raw.get("alt", "").strip()
+        if not full_name:
+            return None
+
+        # Fiyat — indirimli kartta .discounted-price aktif fiyat,
+        # .strikethrough-price üstü çizili eski fiyat; indirimsizde .single-price.
+        original_price: float | None = None
+        if raw.get("discounted"):
+            price = self._pick_lowest_price(raw["discounted"])
+            if raw.get("strike"):
+                original_price = self._pick_lowest_price(raw["strike"])
+        elif raw.get("single"):
+            price = self._pick_lowest_price(raw["single"])
+        else:
+            price = self._pick_lowest_price(raw.get("section", ""))
+
+        if price is None or price <= 0:
+            return None
+        # Eski fiyat yeni fiyattan düşük/eşitse gerçek bir indirim yok, temizle.
+        if original_price is not None and original_price <= price:
+            original_price = None
+
+        return ProductListing(
+            url=href.split("?")[0],  # query param'ları temizle
+            name=full_name,
+            price=price,
+            site=self.site_name,
+            brand=brand.lower(),
+            image_url=raw.get("image"),
+            original_price=original_price,
+        )
 
     @staticmethod
     def _pick_lowest_price(text: str) -> float | None:
