@@ -36,6 +36,9 @@ class AppConfig:
     # Sunucu tarafı zamanlanmış tarama (backend/APScheduler). Masaüstü kullanmaz.
     schedule_enabled: bool = False
     schedule_time: str = "09:00"  # her gün bu yerel saatte (HH:MM)
+    # Yapay zekâ (Gemini) maliyet hesabı için dolar kuru. Harcama planı
+    # data/ai_wallet.json'da (bakiye + bitiş tarihi), bkz. backend/budget.py
+    usd_try: float = 50.0
 
     @classmethod
     def load(cls, path: Path | str) -> "AppConfig":
@@ -57,6 +60,7 @@ class AppConfig:
             auto_scan_on_launch=bool(data.get("auto_scan_on_launch", False)),
             schedule_enabled=bool(data.get("schedule_enabled", False)),
             schedule_time=str(data.get("schedule_time", "09:00")),
+            usd_try=float(data.get("usd_try", 50.0)),
         )
 
     def to_dict(self) -> dict:
@@ -73,6 +77,7 @@ class AppConfig:
             "auto_scan_on_launch": self.auto_scan_on_launch,
             "schedule_enabled": self.schedule_enabled,
             "schedule_time": self.schedule_time,
+            "usd_try": self.usd_try,
         }
 
     def save(self, path: Path | str) -> None:

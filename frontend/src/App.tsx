@@ -11,12 +11,14 @@ import {
   WEIGHT_BUCKETS,
 } from "./api";
 import { AlertsModal } from "./components/AlertsModal";
+import { AssistantPanel } from "./components/AssistantPanel";
 import { ExportModal } from "./components/ExportModal";
 import { FiltersModal } from "./components/FiltersModal";
+import { MarketView } from "./components/MarketView";
 import { PriceChartModal } from "./components/PriceChartModal";
 import { ScanBar } from "./components/ScanBar";
 
-type Tab = "deals" | "fake" | "all";
+type Tab = "deals" | "fake" | "all" | "market";
 
 function emptyStatus(): ScanStatus {
   return {
@@ -51,6 +53,7 @@ export default function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +230,12 @@ export default function App() {
               )}
             </button>
             <button
+              onClick={() => setShowAssistant(true)}
+              className="rounded-lg border border-amber-400 px-4 py-2 text-sm text-amber-300 hover:bg-stone-800"
+            >
+              ☕ Asistan
+            </button>
+            <button
               onClick={() => setShowExport(true)}
               className="rounded-lg border border-stone-600 px-4 py-2 text-sm hover:bg-stone-800"
             >
@@ -280,17 +289,22 @@ export default function App() {
             <TabButton active={tab === "all"} onClick={() => setTab("all")}>
               Tüm Ürünler ({products.length})
             </TabButton>
+            <TabButton active={tab === "market"} onClick={() => setTab("market")}>
+              Piyasa
+            </TabButton>
           </div>
-          <input
+          {tab !== "market" && <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="🔍 Sonuçlarda ara… (marka, ürün, site)"
             className="ml-auto w-full max-w-md rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm outline-none focus:border-amber-500"
-          />
+          />}
         </div>
 
+        {tab === "market" && <MarketView />}
+
         {/* Gramaj filtresi */}
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className={"flex flex-wrap items-center gap-2 text-sm " + (tab === "market" ? "hidden" : "")}>
           <span className="mr-1 text-stone-500">Gramaj:</span>
           {WEIGHT_BUCKETS.map((b) => {
             const n = searched.filter((r) => b.test(r.weight_g)).length;
@@ -314,7 +328,7 @@ export default function App() {
         </div>
 
         {/* Tablo */}
-        <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <div className={"overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm " + (tab === "market" ? "hidden" : "")}>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs uppercase text-stone-500">
@@ -356,7 +370,18 @@ export default function App() {
                       <td className="px-4 py-2.5 text-right font-medium tabular-nums">
                         {fmtPrice(r.price)} {r.currency}
                         {r.price_per_kg != null && (
-                          <div className="text-xs font-normal text-stone-400">{fmtPrice(r.price_per_kg)} / kg</div>
+                          <div className="text-xs font-normal text-stone-400">
+                            {fmtPrice(r.price_per_kg)} / kg
+                            {r.market_tier && (
+                              <span
+                                title="Aynı paket boyundaki çekirdek kahvelerin son 30 günlük kilo fiyatına göre"
+                                className={r.market_tier === "ucuz" ? " font-medium text-green-700" : ""}
+                              >
+                                {" · "}
+                                {r.market_tier === "ucuz" ? "ucuz dilim" : r.market_tier === "pahali" ? "pahalı dilim" : "orta"}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       {isDeal && (
@@ -458,6 +483,15 @@ export default function App() {
       )}
       {showAlerts && <AlertsModal onClose={() => setShowAlerts(false)} />}
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+      {showAssistant && (
+        <AssistantPanel
+          onClose={() => setShowAssistant(false)}
+          onAppChanged={() => {
+            api.config().then(setConfig).catch(() => {});
+            api.scanStatus().then(setScan).catch(() => {});
+          }}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-stone-900 px-5 py-3 text-sm text-white shadow-lg">

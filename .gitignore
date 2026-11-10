@@ -15,3 +15,8 @@ dist/
 .vscode/
 .idea/
 .claude/
+
+# Gizli anahtarlar (Gemini API vb.) - asla commit'leme
+.env
+.env.*
+

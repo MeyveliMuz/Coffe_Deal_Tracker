@@ -79,6 +79,32 @@ def _is_price_outlier(price: float, recent: list[float]) -> bool:
     return med > 0 and not (med * _OUTLIER_LOW <= price <= med * _OUTLIER_HIGH)
 
 
+DETAILS_PER_SITE = 10  # tarama başına site başına açıklaması çekilecek ürün
+
+
+async def _fetch_details(db, context, site_name, urls, config, scraper, on_progress) -> None:
+    from src.scrapers.details import fetch_many
+
+    todo = db.urls_needing_details(urls, DETAILS_PER_SITE)
+    if not todo:
+        return
+    _safe(on_progress, f"{site_name.title()} · ürün açıklamaları ({len(todo)})")
+    try:
+        res = await fetch_many(
+            context, site_name, todo,
+            delay_ms=config.request_delay_ms,
+            amazon_scraper=scraper if site_name == "amazon_tr" else None,
+        )
+    except Exception:
+        log.exception("%s açıklama çekme hatası", site_name)
+        return
+    ok = 0
+    for url, (desc, err) in res.items():
+        db.save_details(url, desc, err)
+        ok += desc is not None
+    log.info("%s: %d/%d ürün açıklaması çekildi", site_name, ok, len(res))
+
+
 def _safe(cb, *args) -> None:
     """Callback'i çağır; callback içindeki bir hata taramayı çökertmesin."""
     if cb is None:
@@ -209,6 +235,7 @@ async def _scan(
                     # Bir sitede ilk markada bot koruması alındıysa kalan
                     # markaları denememeye gerek yok (hepsi aynı korumaya takılır).
                     site_bot_blocked = False
+                    seen_urls: list[str] = []  # bu taramada görülen ürünler (açıklama için)
 
                     try:
                         for brand in config.brands:
@@ -261,6 +288,7 @@ async def _scan(
                                     continue
                                 summary.products_found += 1
                                 recorded_at = db.record_listing(listing)
+                                seen_urls.append(listing.url)
                                 _safe(on_product, listing)
 
                                 deal = detect_deal(
@@ -272,6 +300,14 @@ async def _scan(
                                 if deal is not None and deal.verdict != "fake":
                                     summary.deals_found += 1
                                     _safe(on_deal, deal)
+
+                        # Ürün sayfası açıklamaları — kahve profili için ham girdi.
+                        # Bot korumasını tetiklememek için tarama başına site
+                        # başına az sayıda; bir kez çekilen tekrar çekilmez.
+                        if seen_urls and not cancelled() and not site_bot_blocked:
+                            await _fetch_details(
+                                db, context, site_name, seen_urls, config, scraper, on_progress
+                            )
                     finally:
                         log.info("%s context kapatılıyor", site_name)
                         try:

@@ -15,6 +15,7 @@ from src.core.config import (
 )
 from src.core.deal_detector import detect_deal
 from src.core.models import Deal, ProductListing
+from src.scrapers.base import BaseScraper
 from src.storage.db import PriceDatabase
 
 log = logging.getLogger(__name__)
@@ -40,7 +41,12 @@ def snapshot(cfg: AppConfig, hours: int = 48) -> tuple[list[ProductListing], lis
         rows = db.latest_snapshot(hours=hours)
         products: list[ProductListing] = []
         deals: list[Deal] = []
+        allowed = set(cfg.product_types)
         for listing, recorded_at in rows:
+            # Tarama anındaki tür filtresi sonradan iyileşmiş olabilir (ör.
+            # çikolata/toz kahve eskiden çekirdek sayılıyordu) — burada da uygula
+            if BaseScraper._classify_product(listing.name) not in allowed:
+                continue
             products.append(listing)
             deal = detect_deal(
                 db, listing, window_days=cfg.history_days, recorded_at=recorded_at

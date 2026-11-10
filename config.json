@@ -5,6 +5,8 @@
     "meinl",
     "tchibo",
     "kicking horse",
+    "kahve dünyası",
+    "jacobs",
     "whirl"
   ],
   "sites": [
@@ -23,5 +25,6 @@
   "start_with_windows": true,
   "auto_scan_on_launch": true,
   "schedule_enabled": true,
-  "schedule_time": "10:00"
+  "schedule_time": "10:00",
+  "usd_try": 50.0
 }

@@ -114,18 +114,28 @@ class BaseScraper(ABC):
     _TYPE_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("kapsul", ("kapsül", "kapsul", "pod", "tablet",
                     "nespresso uyumlu", "dolce gusto")),
-        ("instant", ("granül", "granul", "instant",
-                     "hazır kahve", "hazir kahve")),
-        ("ogutulmus", ("öğütülmüş", "ogutulmus")),
+        ("instant", ("granül", "granul", "instant", "hazır kahve", "hazir kahve",
+                     "1 arada", "1arada", "monarch")),
+        ("ogutulmus", ("öğütülmüş", "ogutulmus", "toz kahve", "çekilmiş", "cekilmis")),
         ("filtre", ("filtre kahve", "filtre  kahve")),
         ("turk", ("türk kahvesi", "turk kahvesi")),
+    )
+
+    _NOT_COFFEE: tuple[str, ...] = (
+        "çikolata", "gofret", "draje", "madlen", "kurabiye", "lokum", "fincan",
+        "kupa", "termos", "bardak", "kaplı",
     )
 
     @classmethod
     def _classify_product(cls, product_name: str) -> str | None:
         """Ürünün türünü döndür (cekirdek/ogutulmus/kapsul/filtre/turk/instant).
         Kahve ürünü değilse None."""
-        name = product_name.lower()
+        # "İ".lower() Python'da "i̇" (noktalı) verir → "ÇEKİRDEK" eşleşmez
+        name = product_name.replace("İ", "i").lower()
+        # Kahve markaları kahve dışı ürünler de satıyor ve marka adı "kahve"
+        # içerebiliyor (ör. "Kahve Dünyası ... Sütlü Çikolata") — ele.
+        if any(w in name for w in cls._NOT_COFFEE):
+            return None
         # Pozitif kontrol: ad "kahve" veya "coffee" içermeli — kahve markaları
         # giyim/aksesuar gibi alakasız ürünler de satıyor (ör. "Tchibo
         # Dokuma Pijama Takımı"), bunları en başta eleyelim.

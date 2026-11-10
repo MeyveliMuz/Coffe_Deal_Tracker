@@ -14,7 +14,7 @@ from typing import Optional
 from src.core.config import AppConfig
 from src.core.scan_engine import run_scan
 
-from . import notify, services
+from . import enrich, notify, services
 from .schemas import deal_to_dict, product_to_dict, summary_to_dict
 
 log = logging.getLogger(__name__)
@@ -150,6 +150,9 @@ class ScanManager:
             except Exception:
                 log.exception("Alarm kontrolü hatası")
             self._put({"type": "finished", "summary": summary_to_dict(summary)})
+            # Yeni çekilen açıklamalardan kahve profili çıkar (Gemini, arka planda)
+            if enrich.start():
+                log.info("Kahve profili zenginleştirme başlatıldı")
         except Exception as exc:  # son çare
             log.exception("Tarama job'u çöktü")
             self.status = "error"

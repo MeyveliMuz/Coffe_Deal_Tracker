@@ -19,6 +19,10 @@ from src.core.weight import parse_weight
     # sonraki parantez açıklaması toplamı değiştirmez
     ("Julius Meinl Jubilaum 1 Kg Çekirdek Kahve (2 Adet 500 Gr)", 1000, "1 kg"),
     ("The Whirl Espresso 441°F Çekirdek Kahve 250 G", 250, "250 g"),
+    ("LavAzza Qualita Rossa Espresso Çekirdek Kahve 1 kg | 2'li Avantajlı Paket", 2000, "2 × 1 kg"),
+    ("illy Çekirdek Kahve 3'lü - Orta Kavrulmuş (3X250GR)", 750, "3 × 250 g"),
+    # gramajdan ÖNCE gelen "4'lü" çarpan değildir: parantezdeki toplam ağırlıktır
+    ("illy Çekirdek Kahve 4'lü - Orta Kavrulmuş (1000 GR)", 1000, "1 kg"),
 ])
 def test_parse_weight(name, total, label):
     w = parse_weight(name)

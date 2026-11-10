@@ -33,6 +33,28 @@ CREATE TABLE IF NOT EXISTS price_history (
 CREATE INDEX IF NOT EXISTS idx_price_history_product_time
     ON price_history(product_url, recorded_at);
 
+-- Yapay zekâ (Gemini) çağrılarının token kullanımı — aylık bütçe takibi
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts            TIMESTAMP NOT NULL,
+    model         TEXT NOT NULL,
+    purpose       TEXT NOT NULL,
+    input_tokens  INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd      REAL NOT NULL
+);
+
+-- Ürün sayfasından çekilen açıklama + Gemini'nin çıkardığı kahve profili
+CREATE TABLE IF NOT EXISTS product_details (
+    url           TEXT PRIMARY KEY,
+    description   TEXT,
+    fetched_at    TIMESTAMP,
+    fetch_error   TEXT,
+    profile_json  TEXT,
+    classified_at TIMESTAMP,
+    classifier    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     product_url     TEXT NOT NULL,
@@ -341,6 +363,98 @@ class PriceDatabase:
         with self._cursor() as cur:
             cur.execute("SELECT url, name, brand, site, image_url FROM products ORDER BY name")
             return cur.fetchall()
+
+    # --- yapay zekâ kullanımı ---------------------------------------------------
+    def add_llm_usage(self, model: str, purpose: str, tin: int, tout: int, cost_usd: float) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO llm_usage (ts, model, purpose, input_tokens, output_tokens, cost_usd) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (datetime.now(), model, purpose, int(tin), int(tout), float(cost_usd)),
+            )
+
+    def llm_usage_since(self, since: datetime) -> list[tuple[str, int, int, int, float]]:
+        """(amaç, çağrı, giriş token, çıkış token, maliyet $) — `since`'ten beri."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT purpose, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost_usd) "
+                "FROM llm_usage WHERE ts >= ? GROUP BY purpose",
+                (since,),
+            )
+            return cur.fetchall()
+
+    # --- ürün ayrıntıları (açıklama + kahve profili) -------------------------
+    def urls_needing_details(self, urls: list[str], limit: int, retry_days: int = 7) -> list[str]:
+        """Verilen URL'lerden açıklaması henüz çekilmemiş olanlar (sıra korunur).
+        Daha önce hata alanlar `retry_days` sonra yeniden denenir."""
+        if not urls or limit <= 0:
+            return []
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT url FROM product_details WHERE description IS NOT NULL "
+                f"OR fetched_at >= datetime('now', '-{int(retry_days)} days')"
+            )
+            done = {r[0] for r in cur.fetchall()}
+        out: list[str] = []
+        for u in urls:
+            if u not in done and u not in out:
+                out.append(u)
+                if len(out) >= limit:
+                    break
+        return out
+
+    def save_details(self, url: str, description: Optional[str], error: Optional[str] = None) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO product_details (url, description, fetched_at, fetch_error)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET
+                    description = COALESCE(excluded.description, product_details.description),
+                    fetched_at  = excluded.fetched_at,
+                    fetch_error = excluded.fetch_error
+                """,
+                (url, description, datetime.now(), error),
+            )
+
+    def details_to_classify(self, limit: int) -> list[tuple[str, str, str, str]]:
+        """(url, ad, marka, açıklama) — açıklaması olup profili çıkarılmamışlar."""
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT d.url, p.name, p.brand, d.description
+                FROM product_details d JOIN products p ON p.url = d.url
+                WHERE d.description IS NOT NULL AND d.profile_json IS NULL
+                ORDER BY d.fetched_at
+                LIMIT ?
+                """,
+                (int(limit),),
+            )
+            return cur.fetchall()
+
+    def save_profile(self, url: str, profile_json: str, classifier: str) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE product_details SET profile_json = ?, classified_at = ?, classifier = ? "
+                "WHERE url = ?",
+                (profile_json, datetime.now(), classifier, url),
+            )
+
+    def all_profiles(self) -> dict[str, str]:
+        """url -> profil JSON metni (yalnız sınıflandırılmışlar)."""
+        with self._cursor() as cur:
+            cur.execute("SELECT url, profile_json FROM product_details WHERE profile_json IS NOT NULL")
+            return dict(cur.fetchall())
+
+    def details_stats(self) -> dict:
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*), COUNT(description), COUNT(profile_json) FROM product_details"
+            )
+            tried, described, profiled = cur.fetchone()
+            cur.execute("SELECT COUNT(*) FROM products")
+            total = cur.fetchone()[0]
+        return {"products": total, "tried": tried, "described": described, "profiled": profiled}
 
     # --- fiyat alarmları -----------------------------------------------------
     def latest_price(self, product_url: str) -> Optional[float]:

@@ -27,6 +27,8 @@ class ProductOut(BaseModel):
     weight_g: Optional[int] = None       # toplam net gramaj (paket × adet)
     weight_label: Optional[str] = None   # ör. "2 × 250 g"
     price_per_kg: Optional[float] = None
+    market_tier: Optional[str] = None    # ucuz | orta | pahali (kendi paket boyu normuna göre)
+    profile: Optional[dict] = None       # Gemini'nin çıkardığı kahve profili (kavrum, notalar...)
 
 
 class DealOut(ProductOut):
@@ -61,6 +63,7 @@ class ConfigModel(BaseModel):
     auto_scan_on_launch: bool = False
     schedule_enabled: bool = False
     schedule_time: str = "09:00"
+    usd_try: float = 50.0
 
 
 class AlertIn(BaseModel):

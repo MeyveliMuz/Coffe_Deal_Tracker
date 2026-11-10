@@ -22,6 +22,8 @@ _POST_ADET = re.compile(
     r"^\s*[-,]?\s*(\d+)\s*(?:adet|paket|'?\s*l[iıuü]\b)", re.IGNORECASE   # 500 gr + " - 2 Adet" / " 2 Lİ"
 )
 
+_ANY_LI = re.compile(r"(\d+)\s*'\s*l[iıuü]\b", re.IGNORECASE)  # 2'li / 3'lü (adın herhangi bir yerinde)
+
 
 def parse_weight(name: str) -> Optional[dict]:
     """{'total_g', 'pack_g', 'count', 'label'} ya da gramaj yoksa None."""
@@ -40,6 +42,12 @@ def parse_weight(name: str) -> Optional[dict]:
         if hit and 1 < int(hit.group(1)) <= 24:
             count = int(hit.group(1))
             break
+
+    if count == 1:
+        # "1 kg | 2'li Avantajlı Paket": adet gramajdan SONRA, uzakta ama kesme işaretli
+        hit = _ANY_LI.search(suffix)
+        if hit and 1 < int(hit.group(1)) <= 24:
+            count = int(hit.group(1))
 
     pack_g = round(pack_g)
     unit = f"{pack_g / 1000:g} kg" if pack_g >= 1000 else f"{pack_g} g"

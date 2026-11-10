@@ -20,7 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import AppConfig
 
-from . import export, scheduler, services
+import asyncio
+
+from . import assistant, budget, enrich, export, market, preferences, scheduler, services
 from .scan_manager import manager
 from .schemas import (
     AlertIn,
@@ -40,6 +42,7 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Açılışta zamanlayıcıyı başlat (config'e göre günlük tarama kurar)
+    budget.install()  # Gemini çağrılarının maliyetini kaydet
     scheduler.start_scheduler()
     yield
     scheduler.stop_scheduler()
@@ -91,6 +94,7 @@ def put_config(cfg: ConfigModel) -> dict:
         auto_scan_on_launch=cfg.auto_scan_on_launch,
         schedule_enabled=cfg.schedule_enabled,
         schedule_time=cfg.schedule_time,
+        usd_try=cfg.usd_try,
     )
     services.save_config(new_cfg)
     scheduler.reschedule(new_cfg)  # zamanlama değiştiyse job'u güncelle
@@ -100,13 +104,95 @@ def put_config(cfg: ConfigModel) -> dict:
 @app.get("/api/products", response_model=list[ProductOut])
 def get_products() -> list[dict]:
     products, _ = services.snapshot(services.load_config())
-    return [product_to_dict(p) for p in products]
+    return _with_tier([product_to_dict(p) for p in products])
 
 
 @app.get("/api/deals", response_model=list[DealOut])
 def get_deals() -> list[dict]:
     _, deals = services.snapshot(services.load_config())
-    return [deal_to_dict(d) for d in deals]
+    return _with_tier([deal_to_dict(d) for d in deals])
+
+
+def _with_tier(rows: list[dict]) -> list[dict]:
+    """Her ürüne kendi paket boyu normuna göre konum ekle (ucuz/orta/pahali)."""
+    th = market.current_thresholds()
+    profiles = enrich.profiles()
+    for r in rows:
+        r["market_tier"] = market.tier(r.get("price_per_kg"), r.get("weight_g"), th)
+        r["profile"] = profiles.get(r["url"])
+    return rows
+
+
+@app.post("/api/chat")
+async def chat(body: dict) -> dict:
+    """Kahve asistanı: {messages: [{role: user|assistant, text}]}
+    -> {reply, recommendations, actions, budget}. Asistan araç çağırarak ayar
+    değiştirebilir ve tarama başlatabilir."""
+    msgs = body.get("messages") if isinstance(body, dict) else None
+    if not isinstance(msgs, list) or not msgs:
+        raise HTTPException(400, "messages listesi gerekli")
+    loop = asyncio.get_running_loop()
+
+    def start_scan() -> bool:
+        # Asistan thread'de çalışır; tarama task'ı event loop'ta başlatılmalı
+        async def _start() -> bool:
+            return manager.start(services.load_config(), services.db_path())
+        return asyncio.run_coroutine_threadsafe(_start(), loop).result(timeout=10)
+
+    try:
+        return await asyncio.to_thread(assistant.chat, msgs, start_scan)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.get("/api/ai/preferences")
+def ai_preferences() -> list[dict]:
+    """Asistanın hatırladığı kullanıcı tercihleri."""
+    return preferences.load()
+
+
+@app.delete("/api/ai/preferences")
+def ai_forget(text: str) -> list[dict]:
+    """`text` içeren tercihleri sil."""
+    return preferences.forget(text)[1]
+
+
+@app.get("/api/ai")
+def ai_status() -> dict:
+    """Yapay zekâ bütçesi (bu ay harcanan / sınır) ve profil kapsamı."""
+    return {"budget": budget.status(), "enrich": enrich.status()}
+
+
+@app.post("/api/ai/balance")
+def ai_balance(body: dict) -> dict:
+    """AI Studio'daki güncel bakiye: {balance_try, until?} -> güncel bütçe durumu."""
+    try:
+        budget.set_balance(float(body.get("balance_try")), body.get("until") or None)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+    return budget.status()
+
+
+@app.get("/api/enrich")
+def enrich_status() -> dict:
+    """Ürün açıklaması / kahve profili kapsamı ve son Gemini çalıştırması."""
+    return enrich.status()
+
+
+@app.post("/api/enrich", status_code=202)
+async def enrich_start(limit: int = 80) -> dict:
+    """Profili olmayan ürünleri şimdi sınıflandır (Gemini, arka planda)."""
+    if not enrich.start(limit):
+        raise HTTPException(409, "Zaten çalışıyor ya da GEMINI_API_KEY yok (.env)")
+    return enrich.status()
+
+
+@app.get("/api/market")
+def get_market(size: str = "1000") -> dict:
+    """Piyasa normu: aylık ucuz/orta/pahalı kilo fiyatı + marka kırılımı."""
+    return market.overview(size)
 
 
 @app.get("/api/history", response_model=list[HistoryPoint])

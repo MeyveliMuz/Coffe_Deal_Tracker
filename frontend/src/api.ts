@@ -18,6 +18,59 @@ export interface Product {
   weight_g: number | null;
   weight_label: string | null;
   price_per_kg: number | null;
+  market_tier: "ucuz" | "orta" | "pahali" | null;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export interface ChatRecommendation {
+  url: string;
+  name: string;
+  brand: string;
+  site: string;
+  weight: string | null;
+  price_tl: number;
+  price_per_kg: number | null;
+  market: "ucuz" | "orta" | "pahali" | null;
+  discount: { verdict: "gerçek" | "doğrulanamadı" | "sahte"; pct: number; page_claim_pct: number | null } | null;
+  reason: string;
+}
+
+export interface ChatAction {
+  type: "settings_updated" | "scan_started" | "preference_saved" | "preference_removed" | "balance_updated";
+  changes?: string[];
+  text?: string;
+}
+
+export interface AiBudget {
+  month: string;
+  spent_try: number;
+  budget_try: number;
+  remaining_try: number;
+  chat_model: string;
+  chat_mode: "akıllı" | "tasarruf";
+  /** Bakiyeden düşülen tahmini kalan (TL) — cüzdan tanımlıysa */
+  balance_est_try?: number;
+  balance_at?: string;
+  until?: string;
+  cost_factor: number;
+}
+
+export interface Preference {
+  kind: "like" | "dislike" | "note";
+  text: string;
+  ts: string;
+}
+
+export interface MarketOverview {
+  size: string;
+  size_label: string;
+  sizes: { id: string; label: string }[];
+  months: { month: string; low: number; mid: number; high: number; products: number }[];
+  brands: { brand: string; products: number; mid: number; min: number; max: number; change_pct: number | null }[];
 }
 
 /** Gramaj filtresi kovaları (toplam net ağırlığa göre) */
@@ -96,6 +149,28 @@ async function asJson<T>(r: Response): Promise<T> {
 export const api = {
   deals: () => fetch(`${API_BASE}/api/deals`).then((r) => asJson<Deal[]>(r)),
   products: () => fetch(`${API_BASE}/api/products`).then((r) => asJson<Product[]>(r)),
+  chat: (messages: ChatMessage[]) =>
+    fetch(`${API_BASE}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+    }).then((r) =>
+      asJson<{ reply: string; recommendations: ChatRecommendation[]; actions: ChatAction[]; model: string; budget: AiBudget }>(r)
+    ),
+  ai: () => fetch(`${API_BASE}/api/ai`).then((r) => asJson<{ budget: AiBudget }>(r)),
+  setAiBalance: (balance_try: number) =>
+    fetch(`${API_BASE}/api/ai/balance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ balance_try }),
+    }).then((r) => asJson<AiBudget>(r)),
+  preferences: () => fetch(`${API_BASE}/api/ai/preferences`).then((r) => asJson<Preference[]>(r)),
+  forgetPreference: (text: string) =>
+    fetch(`${API_BASE}/api/ai/preferences?text=${encodeURIComponent(text)}`, { method: "DELETE" }).then((r) =>
+      asJson<Preference[]>(r)
+    ),
+  market: (size: string) =>
+    fetch(`${API_BASE}/api/market?size=${size}`).then((r) => asJson<MarketOverview>(r)),
   config: () => fetch(`${API_BASE}/api/config`).then((r) => asJson<Config>(r)),
   saveConfig: (c: Config) =>
     fetch(`${API_BASE}/api/config`, {
