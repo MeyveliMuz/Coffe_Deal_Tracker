@@ -23,6 +23,8 @@ Tek bir tarama çekirdeğini (`src/core/scan_engine.py`) paylaşan üç istemcis
 - **Veri dışa aktarma** (⬇ Dışa aktar): fiyat geçmişi / ürünler / fırsatlar → CSV, Excel (.xlsx) veya JSON; pandas ve Excel pivot için "tidy" formatta.
 
 ### Yapay zekâ (Gemini)
+
+> 🔑 **Bu bölümdeki özellikler kendi Gemini API anahtarını gerektirir.** Repoda anahtar yoktur; her kullanıcı kendi anahtarını bağlar ve kullanım ücreti kendi Google hesabından düşer. Kurulum: [Gemini API anahtarı](#gemini-api-anahtarı-yapay-zekâ-özellikleri-için). Anahtar olmadan da tarama, fırsatlar, sahte indirim elemesi, Piyasa sekmesi ve dışa aktarma tamamen çalışır.
 - **Ürün profilleri**: Her taramada site başına 10 yeni ürünün sayfa açıklaması çekilir; tarama bitince Gemini bunlardan **kavrum, tat notaları, menşe, çekirdek türü, gövde/asidite ve uygun demleme yöntemlerini** çıkarır (her ürün yalnız bir kez işlenir).
 - **☕ Kahve Asistanı**: Sağdan açılan sohbet paneli. Demleme yöntemini ve tat tercihini sorar, güncel katalogdan kart halinde öneri yapar (fiyat, kilo fiyatı, piyasa konumu, indirimin gerçek/sahte olduğu). Araç çağırarak:
   - katalogda arama, marka ve piyasa özeti çıkarma,
@@ -52,7 +54,12 @@ npm --prefix frontend run build
 
 ### Gemini API anahtarı (yapay zekâ özellikleri için)
 
-Yapay zekâ özellikleri isteğe bağlıdır; anahtar yoksa uygulamanın geri kalanı normal çalışır.
+Yapay zekâ özellikleri (ürün profilleri ve ☕ Kahve Asistanı) isteğe bağlıdır. **Repo hiçbir API anahtarı içermez; asistanı kullanmak isteyen herkes kendi anahtarını eklemelidir.** Gemini çağrılarının ücreti anahtarın sahibinin Google hesabından düşer.
+
+Anahtar yoksa:
+- Asistan panelinde **"Gemini anahtarı bulunamadı (.env)."** uyarısı görünür, sohbet çalışmaz.
+- Taramalardan sonra ürün profili çıkarılmaz (ürün açıklamaları yine kaydedilir; anahtar eklenince sonraki taramada işlenir).
+- Uygulamanın geri kalanı (tarama, fırsatlar, sahte indirim, Piyasa, alarmlar, dışa aktarma) normal çalışır.
 
 1. [Google AI Studio](https://aistudio.google.com/)'dan bir API anahtarı al.
 2. Proje kökünde `.env` dosyası oluştur:
