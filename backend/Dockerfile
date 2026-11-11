@@ -10,8 +10,9 @@ ENV PYTHONUNBUFFERED=1 \
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Playwright Chromium + OS bağımlılıkları
-RUN playwright install --with-deps chromium
+# Playwright Chromium + OS bağımlılıkları. Playwright'ın kendi Node sürücüsü
+# libatomic1 ister; slim imajda yok (1.65+ ile "libatomic.so.1" hatası).
+RUN apt-get update     && apt-get install -y --no-install-recommends libatomic1     && rm -rf /var/lib/apt/lists/*     && playwright install --with-deps chromium
 
 # Paylaşılan çekirdek + backend + config
 COPY src ./src
